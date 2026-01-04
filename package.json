@@ -21,6 +21,7 @@
     "test:coverage": "echo \"no test:coverage specified,work in process\""
   },
   "dependencies": {
+    "@tdesign-vue-next/chat": "^0.5.0-alpha.10",
     "@vueuse/core": "^12.3.0",
     "axios": "^1.8.4",
     "dayjs": "^1.11.13",
