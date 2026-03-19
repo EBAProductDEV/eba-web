@@ -3,6 +3,11 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface ChatMessageBody {
+  type: 'text' | 'image' | 'error';
+  data: string;
+}
+
 export interface SSEChunkData {
   type: 'delta' | 'finish' | 'error' | any;
   content?: string;

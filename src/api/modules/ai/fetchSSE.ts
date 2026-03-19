@@ -21,7 +21,6 @@ export const fetchSSE = async (url: string, body: any, handlers: SSEHandlers) =>
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
     let buffer = '';
-
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
