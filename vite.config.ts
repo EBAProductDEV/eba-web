@@ -44,6 +44,11 @@ export default ({ mode }: ConfigEnv): UserConfig => {
 
     server: {
       proxy: {
+        '/api/ai': {
+          target: 'http://localhost:10082',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/ai/, ''),
+        },
         '/api': {
           target: 'http://localhost:10081', // 后端地址
           changeOrigin: true,
