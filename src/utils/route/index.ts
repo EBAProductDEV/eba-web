@@ -29,6 +29,9 @@ LayoutMap.set('IFRAME', IFRAME);
 
 let dynamicViewsModules: Record<string, () => Promise<Recordable>>;
 
+// 后端菜单里的 component 只是一个字符串路径，
+// 真实页面组件需要在运行时从 pages 目录里动态匹配出来。
+
 // 动态引入路由组件
 function asyncImportRoute(routes: RouteItem[] | undefined) {
   dynamicViewsModules = dynamicViewsModules || import.meta.glob('../../pages/**/*.vue');
@@ -57,6 +60,7 @@ function asyncImportRoute(routes: RouteItem[] | undefined) {
 }
 
 function dynamicImport(dynamicViewsModules: Record<string, () => Promise<Recordable>>, component: string) {
+  // import.meta.glob 返回的是“文件路径 => 懒加载函数”的映射，这里按 component 文本做一次匹配。
   const keys = Object.keys(dynamicViewsModules);
   const matchKeys = keys.filter((key) => {
     const k = key.replace('../../pages', '');
@@ -82,6 +86,7 @@ function dynamicImport(dynamicViewsModules: Record<string, () => Promise<Recorda
 
 // 将背景对象变成路由对象
 export function transformObjectToRoute<T = RouteItem>(routeList: RouteItem[]): T[] {
+  // 非 LAYOUT 节点会被包装成父路由 + 子路由，以兼容当前的布局体系。
   routeList.forEach(async (route) => {
     const component = route.component as string;
 

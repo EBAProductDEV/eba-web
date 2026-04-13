@@ -1,87 +1,87 @@
 import { defineStore } from 'pinia';
 
+import {
+  getProfile,
+  login as loginApi,
+  logout as logoutApi,
+  refreshToken as refreshTokenApi,
+  register as registerApi,
+} from '@/api/auth';
+import type { LoginParams, RegisterParams } from '@/api/model/authModel';
 import { usePermissionStore } from '@/store';
 import type { UserInfo } from '@/types/interface';
 
-const InitUserInfo: UserInfo = {
-  name: '', // 用户名，用于展示在页面右上角头像处
-  roles: [], // 前端权限模型使用 如果使用请配置modules/permission-fe.ts使用
-};
+// 用户信息默认值统一从这里生成，避免各处手写空对象。
+const initUserInfo = (): UserInfo => ({
+  name: '',
+  roles: [],
+});
 
 export const useUserStore = defineStore('user', {
   state: () => ({
-    token: 'main_token', // 默认token不走权限
-    userInfo: { ...InitUserInfo },
+    // access token，供请求拦截器统一拼接到 Authorization。
+    token: '',
+    // refresh token，在 access token 失效时用于续期。
+    refreshToken: '',
+    // 当前登录用户资料，也是角色与菜单判断的基础数据。
+    userInfo: initUserInfo(),
   }),
   getters: {
-    roles: (state) => {
-      return state.userInfo?.roles;
-    },
+    roles: (state) => state.userInfo?.roles || [],
   },
   actions: {
-    async login(userInfo: Record<string, unknown>) {
-      const mockLogin = async (userInfo: Record<string, unknown>) => {
-        // 登录请求流程
-        console.log(`用户信息:`, userInfo);
-        // const { account, password } = userInfo;
-        // if (account !== 'td') {
-        //   return {
-        //     code: 401,
-        //     message: '账号不存在',
-        //   };
-        // }
-        // if (['main_', 'dev_'].indexOf(password) === -1) {
-        //   return {
-        //     code: 401,
-        //     message: '密码错误',
-        //   };
-        // }
-        // const token = {
-        //   main_: 'main_token',
-        //   dev_: 'dev_token',
-        // }[password];
-        return {
-          code: 200,
-          message: '登录成功',
-          data: 'main_token',
-        };
-      };
-
-      const res = await mockLogin(userInfo);
-      if (res.code === 200) {
-        this.token = res.data;
-      } else {
-        throw res;
+    async login(params: LoginParams) {
+      // 登录成功后一次性写入 token、refreshToken 与用户资料。
+      const result = await loginApi(params);
+      this.token = result.accessToken;
+      this.refreshToken = result.refreshToken;
+      this.userInfo = { ...result.userInfo };
+      return result;
+    },
+    async register(params: RegisterParams) {
+      return registerApi(params);
+    },
+    // 这里只负责刷新 token，本身不处理页面跳转；跳转由请求层统一控制。
+    async refreshTokenAction() {
+      if (!this.refreshToken) {
+        throw new Error('登录已失效，请重新登录');
       }
+      const result = await refreshTokenApi({ refreshToken: this.refreshToken });
+      this.token = result.accessToken;
+      this.refreshToken = result.refreshToken;
+      this.userInfo = { ...result.userInfo };
+      return result.accessToken;
     },
+    // 页面刷新后如果本地还保留 token，可以通过 profile 接口重新同步一份用户资料。
     async getUserInfo() {
-      const mockRemoteUserInfo = async (token: string) => {
-        if (token === 'main_token') {
-          return {
-            name: 'Tencent',
-            roles: ['all'], // 前端权限模型使用 如果使用请配置modules/permission-fe.ts使用
-          };
-        }
-        return {
-          name: 'td_dev',
-          roles: ['UserIndex', 'DashboardBase', 'login'], // 前端权限模型使用 如果使用请配置modules/permission-fe.ts使用
-        };
-      };
-      const res = await mockRemoteUserInfo(this.token);
-
-      this.userInfo = res;
+      if (!this.token) {
+        throw new Error('未登录');
+      }
+      const result = await getProfile();
+      this.userInfo = { ...result };
+      return result;
     },
-    async logout() {
+    // callRemote=false 常用于 token 已失效场景，此时只需要清理本地状态。
+    async logout(callRemote = true) {
+      if (callRemote && this.token) {
+        try {
+          await logoutApi();
+        } catch {
+          // ignore logout errors so local cleanup still happens
+        }
+      }
       this.token = '';
-      this.userInfo = { ...InitUserInfo };
+      this.refreshToken = '';
+      this.userInfo = initUserInfo();
     },
   },
   persist: {
     afterRestore: () => {
+      // 恢复本地缓存后，需要把动态路由重新灌回去，否则刷新页面后菜单会丢失。
       const permissionStore = usePermissionStore();
       permissionStore.initRoutes();
     },
     key: 'user',
-    paths: ['token'],
+    paths: ['token', 'refreshToken', 'userInfo'],
   },
 });

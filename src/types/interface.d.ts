@@ -32,7 +32,26 @@ export interface MenuRoute {
 export type ModeType = 'dark' | 'light';
 
 export interface UserInfo {
+  id?: number;
+  userName?: string;
+  trueName?: string;
   name: string;
+  mobile?: string;
+  email?: string;
+  roleCode?: string;
+  status?: string;
+  logo?: string;
+  gender?: string;
+  birth?: string;
+  tel?: string;
+  addr?: string;
+  postCode?: string;
+  identityType?: string;
+  identityNum?: string;
+  remark?: string;
+  createTime?: string;
+  updateTime?: string;
+  loginTime?: string;
   roles: string[];
 }
 
