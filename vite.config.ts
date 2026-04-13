@@ -9,7 +9,6 @@ import svgLoader from 'vite-svg-loader';
 
 const CWD = process.cwd();
 
-// https://vitejs.dev/config/
 export default ({ mode }: ConfigEnv): UserConfig => {
   const { VITE_BASE_URL } = loadEnv(mode, CWD);
   return {
@@ -44,15 +43,9 @@ export default ({ mode }: ConfigEnv): UserConfig => {
 
     server: {
       proxy: {
-        '/api/ai': {
-          target: 'http://localhost:10082',
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/ai/, ''),
-        },
         '/api': {
-          target: 'http://localhost:10081', // 后端地址
+          target: 'http://localhost:10080',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api/, ''),
         },
       },
     },
