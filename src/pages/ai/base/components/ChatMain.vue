@@ -26,7 +26,7 @@
             <span class="ai-chat-sidebar__session-time">{{ item.time }}</span>
           </t-button>
           <div v-if="recentConversations.length === 0" class="ai-chat-sidebar__placeholder">
-            开始提问后将自动生成会话
+            开始提问后将自动生成会话摘要
           </div>
         </div>
       </div>
@@ -46,9 +46,24 @@
       <header class="ai-chat-header">
         <div class="ai-chat-header__info">
           <h2>智能对话</h2>
-          <p>基于 TDesign Chat 组件，支持主流 AI 产品常见的提问、追问和流式回复体验。</p>
+          <p>支持 OpenAI 与 DashScope 两套模型切换，保留流式回复和多轮追问体验。</p>
         </div>
         <div class="ai-chat-header__controls">
+          <t-select
+            v-model="provider"
+            class="ai-chat-select"
+            :options="providerOptions"
+            size="small"
+            :disabled="loading"
+            @change="handleProviderChange"
+          />
+          <t-select
+            v-model="model"
+            class="ai-chat-select ai-chat-select--model"
+            :options="currentModelOptions"
+            size="small"
+            :disabled="loading"
+          />
           <t-button variant="outline" size="small" @click="clearChat">
             <template #icon><refresh-icon /></template>
             清空
@@ -59,7 +74,7 @@
       <div class="ai-chat-main">
         <div v-if="messages.length === 0" class="ai-chat-empty">
           <h3>今天想先完成什么？</h3>
-          <p>点击下方模板可快速发起对话，也可以直接在输入区自由提问。</p>
+          <p>点击下方模板快速发起对话，也可以直接在输入区自由提问。</p>
           <div class="ai-chat-prompts">
             <t-card
               v-for="item in quickPrompts"
@@ -121,7 +136,8 @@
         >
           <template #footer-prefix>
             <div class="ai-chat-footer__hint">
-              <t-tag size="small" variant="light-outline" theme="primary">{{ model }}</t-tag>
+              <t-tag size="small" variant="light-outline" theme="primary">{{ providerLabel }}</t-tag>
+              <t-tag size="small" variant="light-outline" theme="primary">{{ selectedModelLabel }}</t-tag>
               <span>Enter 发送，Shift + Enter 换行</span>
             </div>
           </template>
@@ -145,11 +161,36 @@ interface DisplayMessage extends ChatMessage {
   contentArray: string[];
 }
 
+interface ModelOption {
+  label: string;
+  value: string;
+}
+
 const assistantActionBar: Array<'copy' | 'good' | 'bad' | 'replay'> = ['copy', 'good', 'bad', 'replay'];
 
 const provider = ref<ChatProvider>('openai');
 const model = ref('gpt-5.4');
-const providerLabel = 'OpenAI';
+
+const providerOptions: Array<{ label: string; value: ChatProvider }> = [
+  { label: 'OpenAI', value: 'openai' },
+  { label: 'DashScope', value: 'dashscope' },
+];
+
+const modelOptions: Record<ChatProvider, ModelOption[]> = {
+  openai: [{ label: 'gpt-5.4', value: 'gpt-5.4' }],
+  dashscope: [{ label: 'qwen3.5-35b-a3b', value: 'qwen3.5-35b-a3b' }],
+};
+
+const providerLabelMap: Record<ChatProvider, string> = {
+  openai: 'OpenAI',
+  dashscope: 'DashScope',
+};
+
+const providerLabel = computed(() => providerLabelMap[provider.value]);
+const currentModelOptions = computed(() => modelOptions[provider.value]);
+const selectedModelLabel = computed(() => {
+  return currentModelOptions.value.find((item) => item.value === model.value)?.label ?? model.value;
+});
 
 const messages = ref<DisplayMessage[]>([]);
 const query = ref('');
@@ -203,6 +244,16 @@ const scrollToBottom = () => {
 };
 
 const splitLines = (content: string) => (content ? content.split('\n') : ['']);
+
+const resetModelForProvider = (nextProvider: ChatProvider) => {
+  model.value = modelOptions[nextProvider][0]?.value ?? '';
+};
+
+const handleProviderChange = (value: unknown) => {
+  if (typeof value !== 'string') return;
+  if (value !== 'openai' && value !== 'dashscope') return;
+  resetModelForProvider(value);
+};
 
 const clearChat = () => {
   requestVersion.value += 1;
@@ -302,7 +353,6 @@ const handleSend = async (presetText?: string) => {
         }
 
         assistantMessage.contentArray = splitLines(assistantMessage.content);
-        // Force list rerender to guarantee token-by-token refresh in all component internals.
         messages.value = [...messages.value];
         scrollToBottom();
       },
@@ -441,6 +491,7 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   padding: 16px 20px;
   border-radius: 16px;
   border: 1px solid rgb(15 23 42 / 6%);
@@ -458,6 +509,20 @@ watch(
   margin: 4px 0 0;
   font-size: 13px;
   color: #64748b;
+}
+
+.ai-chat-header__controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ai-chat-select {
+  width: 130px;
+}
+
+.ai-chat-select--model {
+  width: 190px;
 }
 
 .ai-chat-main {
@@ -639,6 +704,21 @@ watch(
 
   .ai-chat-workbench {
     order: 1;
+  }
+
+  .ai-chat-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ai-chat-header__controls {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .ai-chat-select,
+  .ai-chat-select--model {
+    width: 100%;
   }
 }
 </style>

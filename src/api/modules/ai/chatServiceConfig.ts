@@ -30,7 +30,7 @@ export const defaultChatServiceConfig: ChatServiceConfig = {
         method: 'GET',
         mode: 'sse',
         headers: { Accept: 'text/event-stream' },
-        query: { query: latestUserMessage },
+        query: { query: latestUserMessage, provider, model },
       },
     );
   },
