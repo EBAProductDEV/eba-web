@@ -2,42 +2,44 @@
   <div class="ai-chat-page">
     <aside class="ai-chat-sidebar">
       <div class="ai-chat-sidebar__header">
-        <div class="ai-chat-sidebar__title">AI 助手工作台</div>
+        <div class="ai-chat-sidebar__title">AI Assistant Workspace</div>
         <t-tag theme="primary" variant="light-outline" size="small">{{ providerLabel }}</t-tag>
       </div>
 
-      <t-button block theme="primary" class="ai-chat-sidebar__new" @click="clearChat">
+      <t-button block theme="primary" class="ai-chat-sidebar__new" :loading="creatingConversation" @click="clearChat">
         <template #icon><add-icon /></template>
-        新建对话
+        New Chat
       </t-button>
 
       <div class="ai-chat-sidebar__section">
-        <div class="ai-chat-sidebar__section-title">最近会话</div>
+        <div class="ai-chat-sidebar__section-title">Recent Conversations</div>
         <div class="ai-chat-sidebar__sessions">
           <t-button
-            v-for="item in recentConversations"
-            :key="item.title"
+            v-for="item in conversationList"
+            :key="item.id"
             variant="text"
             block
             class="ai-chat-sidebar__session"
+            :class="{ 'ai-chat-sidebar__session--active': item.id === currentConversationId }"
+            @click="openConversation(item.id)"
           >
             <span class="ai-chat-sidebar__session-title">{{ item.title }}</span>
-            <span class="ai-chat-sidebar__session-preview">{{ item.preview }}</span>
-            <span class="ai-chat-sidebar__session-time">{{ item.time }}</span>
+            <span class="ai-chat-sidebar__session-preview">{{ item.preview || 'No preview yet' }}</span>
+            <span class="ai-chat-sidebar__session-time">{{ formatConversationTime(item.lastMessageAt) }}</span>
           </t-button>
-          <div v-if="recentConversations.length === 0" class="ai-chat-sidebar__placeholder">
-            开始提问后将自动生成会话摘要
+          <div v-if="conversationList.length === 0" class="ai-chat-sidebar__placeholder">
+            Conversations will appear here after you start chatting.
           </div>
         </div>
       </div>
 
       <div class="ai-chat-sidebar__section">
-        <div class="ai-chat-sidebar__section-title">能力标签</div>
+        <div class="ai-chat-sidebar__section-title">Capabilities</div>
         <div class="ai-chat-sidebar__tags">
-          <t-tag size="small">文档总结</t-tag>
-          <t-tag size="small">代码解释</t-tag>
-          <t-tag size="small">方案输出</t-tag>
-          <t-tag size="small">多轮上下文</t-tag>
+          <t-tag size="small">Chat Memory</t-tag>
+          <t-tag size="small">Summary</t-tag>
+          <t-tag size="small">Code Review</t-tag>
+          <t-tag size="small">Workflow</t-tag>
         </div>
       </div>
     </aside>
@@ -45,8 +47,8 @@
     <section class="ai-chat-workbench">
       <header class="ai-chat-header">
         <div class="ai-chat-header__info">
-          <h2>智能对话</h2>
-          <p>支持 OpenAI 与 DashScope 两套模型切换，保留流式回复和多轮追问体验。</p>
+          <h2>{{ activeConversationTitle }}</h2>
+          <p>Conversation memory is stored on the server, so you can reopen a session and continue later.</p>
         </div>
         <div class="ai-chat-header__controls">
           <t-select
@@ -64,17 +66,17 @@
             size="small"
             :disabled="loading"
           />
-          <t-button variant="outline" size="small" @click="clearChat">
+          <t-button variant="outline" size="small" :loading="creatingConversation" @click="clearChat">
             <template #icon><refresh-icon /></template>
-            清空
+            New
           </t-button>
         </div>
       </header>
 
       <div class="ai-chat-main">
         <div v-if="messages.length === 0" class="ai-chat-empty">
-          <h3>今天想先完成什么？</h3>
-          <p>点击下方模板快速发起对话，也可以直接在输入区自由提问。</p>
+          <h3>What do you want to get done today?</h3>
+          <p>Pick a prompt or type your own question to start a remembered conversation.</p>
           <div class="ai-chat-prompts">
             <t-card
               v-for="item in quickPrompts"
@@ -96,7 +98,7 @@
                   ? 'https://tdesign.gtimg.com/site/avatar.jpg'
                   : 'https://tdesign.gtimg.com/site/chat-avatar.png'
               "
-              :name="msg.role === 'user' ? '你' : 'AI 助手'"
+              :name="msg.role === 'user' ? 'You' : 'AI Assistant'"
               :role="msg.role"
               :datetime="msg.datetime"
               class="ai-chat-message"
@@ -120,7 +122,7 @@
           </div>
 
           <div v-if="loading" class="ai-chat-loading">
-            <t-chat-loading animation="gradient" text="AI 正在思考..." />
+            <t-chat-loading animation="gradient" text="AI is thinking..." />
           </div>
         </div>
       </div>
@@ -130,7 +132,7 @@
           v-model="query"
           :loading="loading"
           :textarea-props="senderTextareaProps"
-          placeholder="输入你的问题，按 Enter 发送"
+          placeholder="Ask a question and press Enter"
           @send="handleSenderSend"
           @stop="handleStop"
         >
@@ -138,7 +140,7 @@
             <div class="ai-chat-footer__hint">
               <t-tag size="small" variant="light-outline" theme="primary">{{ providerLabel }}</t-tag>
               <t-tag size="small" variant="light-outline" theme="primary">{{ selectedModelLabel }}</t-tag>
-              <span>Enter 发送，Shift + Enter 换行</span>
+              <span>Enter to send, Shift + Enter for newline</span>
             </div>
           </template>
         </t-chat-sender>
@@ -147,11 +149,25 @@
   </div>
 </template>
 <script setup lang="ts">
+import dayjs from 'dayjs';
 import { AddIcon, RefreshIcon } from 'tdesign-icons-vue-next';
-import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 
+import {
+  createChatConversation,
+  getChatConversationDetail,
+  listChatConversations,
+} from '@/api/modules/ai/chatConversation';
 import { defaultChatServiceConfig } from '@/api/modules/ai/chatServiceConfig';
-import type { ChatMessage, ChatProvider, ChatServiceConfig, SSEChunkData } from '@/types/modules/ai/chatIntl';
+import type {
+  ChatConversationDetail,
+  ChatConversationSummary,
+  ChatMessage,
+  ChatProvider,
+  ChatServiceConfig,
+  PersistedChatMessage,
+  SSEChunkData,
+} from '@/types/modules/ai/chatIntl';
 
 const props = defineProps<{ chatServiceConfig?: ChatServiceConfig }>();
 const service = computed(() => props.chatServiceConfig ?? defaultChatServiceConfig);
@@ -169,7 +185,16 @@ interface ModelOption {
 const assistantActionBar: Array<'copy' | 'good' | 'bad' | 'replay'> = ['copy', 'good', 'bad', 'replay'];
 
 const provider = ref<ChatProvider>('openai');
-const model = ref('gpt-5.4');
+const model = ref('gpt-5.3-codex-spark');
+const query = ref('');
+const loading = ref(false);
+const creatingConversation = ref(false);
+const chatContainer = ref<HTMLElement | null>(null);
+const requestVersion = ref(0);
+const currentConversationId = ref<number | null>(null);
+const messages = ref<DisplayMessage[]>([]);
+const conversationList = ref<ChatConversationSummary[]>([]);
+const abortController = ref<AbortController | null>(null);
 
 const providerOptions: Array<{ label: string; value: ChatProvider }> = [
   { label: 'OpenAI', value: 'openai' },
@@ -177,7 +202,7 @@ const providerOptions: Array<{ label: string; value: ChatProvider }> = [
 ];
 
 const modelOptions: Record<ChatProvider, ModelOption[]> = {
-  openai: [{ label: 'gpt-5.4', value: 'gpt-5.4' }],
+  openai: [{ label: 'gpt-5.3-codex-spark', value: 'gpt-5.3-codex-spark' }],
   dashscope: [{ label: 'qwen3.5-35b-a3b', value: 'qwen3.5-35b-a3b' }],
 };
 
@@ -191,12 +216,10 @@ const currentModelOptions = computed(() => modelOptions[provider.value]);
 const selectedModelLabel = computed(() => {
   return currentModelOptions.value.find((item) => item.value === model.value)?.label ?? model.value;
 });
-
-const messages = ref<DisplayMessage[]>([]);
-const query = ref('');
-const loading = ref(false);
-const chatContainer = ref<HTMLElement | null>(null);
-const requestVersion = ref(0);
+const activeConversationTitle = computed(() => {
+  const active = conversationList.value.find((item) => item.id === currentConversationId.value);
+  return active?.title ?? 'New conversation';
+});
 
 const senderTextareaProps = {
   autosize: { minRows: 1, maxRows: 6 },
@@ -204,49 +227,118 @@ const senderTextareaProps = {
 
 const quickPrompts = [
   {
-    title: '周报自动整理',
-    detail: '将零散记录整理成结构化周报，附下周计划',
-    prompt: '请帮我把本周工作整理成周报，分为成果、问题、下周计划三部分。',
+    title: 'Weekly Update',
+    detail: 'Turn scattered notes into a concise weekly report with next steps.',
+    prompt: 'Please help me convert this week into a weekly report with achievements, blockers, and next week plan.',
   },
   {
-    title: '需求评审助手',
-    detail: '识别需求风险并给出验收标准建议',
-    prompt: '你是产品评审助手，请帮我列出这个需求在技术和体验上的风险点，并给出验收标准模板。',
+    title: 'Requirement Review',
+    detail: 'Identify delivery risk and produce acceptance criteria.',
+    prompt: 'Review this requirement and list technical risks, UX risks, and a compact acceptance checklist.',
   },
   {
-    title: '代码优化建议',
-    detail: '从可维护性和性能两个维度给出改进方案',
-    prompt: '请作为资深前端工程师，给我一份 Vue 页面重构建议，重点提升可维护性和交互体验。',
+    title: 'Code Optimization',
+    detail: 'Focus on maintainability and performance improvements.',
+    prompt: 'Act as a senior engineer and suggest a refactor plan that improves maintainability and performance.',
   },
   {
-    title: '会议纪要总结',
-    detail: '自动提炼行动项、负责人和截止时间',
-    prompt: '请帮我整理会议纪要，输出决策结论、行动项、负责人和截止时间。',
+    title: 'Meeting Summary',
+    detail: 'Extract decisions, owners, and deadlines from meeting notes.',
+    prompt: 'Summarize this meeting into decisions, action items, owners, and deadlines.',
   },
 ];
 
-const nowTime = () => {
-  const date = new Date();
-  return `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+const splitLines = (content: string) => (content ? content.split('\n') : ['']);
+
+const formatMessageTime = (dateTime?: string | null) => {
+  if (!dateTime) return dayjs().format('HH:mm');
+  return dayjs(dateTime).format('HH:mm');
 };
+
+const formatConversationTime = (dateTime?: string | null) => {
+  if (!dateTime) return '--';
+  return dayjs(dateTime).format('MM-DD HH:mm');
+};
+
+const toDisplayMessage = (message: PersistedChatMessage): DisplayMessage => ({
+  role: message.role,
+  content: message.content,
+  datetime: formatMessageTime(message.createdAt),
+  contentArray: splitLines(message.content),
+});
 
 const scrollToBottom = () => {
   nextTick(() => {
     const el = chatContainer.value;
     if (el) {
-      try {
-        el.scrollTop = el.scrollHeight;
-      } catch (error) {
-        console.warn('Scroll failed', error);
-      }
+      el.scrollTop = el.scrollHeight;
     }
   });
 };
 
-const splitLines = (content: string) => (content ? content.split('\n') : ['']);
-
 const resetModelForProvider = (nextProvider: ChatProvider) => {
   model.value = modelOptions[nextProvider][0]?.value ?? '';
+};
+
+const cancelStreaming = () => {
+  abortController.value?.abort();
+  abortController.value = null;
+  requestVersion.value += 1;
+  loading.value = false;
+};
+
+const loadConversationList = async () => {
+  conversationList.value = await listChatConversations();
+};
+
+const syncConversationMeta = (conversationId: number, title?: string) => {
+  const existing = conversationList.value.find((item) => item.id === conversationId);
+  if (existing) {
+    if (title) {
+      existing.title = title;
+    }
+    return;
+  }
+  conversationList.value.unshift({
+    id: conversationId,
+    title: title ?? 'New conversation',
+    preview: '',
+    provider: provider.value,
+    model: model.value,
+    lastMessageAt: null,
+  });
+};
+
+const openConversation = async (conversationId: number) => {
+  if (loading.value) {
+    cancelStreaming();
+  }
+  const detail: ChatConversationDetail = await getChatConversationDetail(conversationId);
+  currentConversationId.value = detail.conversationId;
+  provider.value = detail.provider;
+  model.value = detail.model;
+  messages.value = detail.messages.map(toDisplayMessage);
+  scrollToBottom();
+};
+
+const createConversationForCurrentSelection = async () => {
+  creatingConversation.value = true;
+  try {
+    const created = await createChatConversation(provider.value, model.value);
+    currentConversationId.value = created.conversationId;
+    syncConversationMeta(created.conversationId, created.title);
+    await loadConversationList();
+    return created.conversationId;
+  } finally {
+    creatingConversation.value = false;
+  }
+};
+
+const clearChat = async () => {
+  cancelStreaming();
+  messages.value = [];
+  query.value = '';
+  await createConversationForCurrentSelection();
 };
 
 const handleProviderChange = (value: unknown) => {
@@ -254,36 +346,6 @@ const handleProviderChange = (value: unknown) => {
   if (value !== 'openai' && value !== 'dashscope') return;
   resetModelForProvider(value);
 };
-
-const clearChat = () => {
-  requestVersion.value += 1;
-  loading.value = false;
-  messages.value = [];
-  query.value = '';
-};
-
-const conversationTitle = computed(() => {
-  const firstUserMessage = messages.value.find((item) => item.role === 'user')?.content ?? '';
-  if (!firstUserMessage) return '新对话';
-  return firstUserMessage.slice(0, 20);
-});
-
-const conversationPreview = computed(() => {
-  const latest = [...messages.value].reverse().find((item) => item.content.trim())?.content ?? '';
-  return latest.slice(0, 28) || '等待输入...';
-});
-
-const recentConversations = computed(() => {
-  if (!messages.value.length) return [];
-
-  return [
-    {
-      title: conversationTitle.value,
-      preview: conversationPreview.value,
-      time: messages.value[messages.value.length - 1]?.datetime ?? nowTime(),
-    },
-  ];
-});
 
 const handleQuickPrompt = (prompt: string) => {
   handleSend(prompt);
@@ -294,8 +356,7 @@ const handleSenderSend = (value: string) => {
 };
 
 const handleStop = () => {
-  requestVersion.value += 1;
-  loading.value = false;
+  cancelStreaming();
 };
 
 const handleAssistantOperation = (operation: string, index: number) => {
@@ -311,19 +372,24 @@ const handleSend = async (presetText?: string) => {
   const text = (presetText ?? query.value ?? '').trim();
   if (!text || loading.value) return;
 
+  let conversationId = currentConversationId.value;
+  if (!conversationId) {
+    conversationId = await createConversationForCurrentSelection();
+  }
+
   const currentRequestVersion = requestVersion.value + 1;
   requestVersion.value = currentRequestVersion;
 
   const userMessage: DisplayMessage = {
     role: 'user',
     content: text,
-    datetime: nowTime(),
+    datetime: formatMessageTime(),
     contentArray: [text],
   };
   const assistantMessage = reactive<DisplayMessage>({
     role: 'assistant',
     content: '',
-    datetime: nowTime(),
+    datetime: formatMessageTime(),
     contentArray: [],
   });
 
@@ -331,46 +397,55 @@ const handleSend = async (presetText?: string) => {
   query.value = '';
   loading.value = true;
 
+  const controller = new AbortController();
+  abortController.value = controller;
+
   scrollToBottom();
 
-  const history = messages.value.slice(0, -1);
-  try {
-    await service.value.send({
-      messages: history,
-      provider: provider.value,
-      model: model.value,
-      onMessage: (chunk: SSEChunkData | string) => {
-        if (requestVersion.value !== currentRequestVersion) return;
+  await service.value.send({
+    conversationId,
+    message: text,
+    provider: provider.value,
+    model: model.value,
+    signal: controller.signal,
+    onMessage: (chunk: SSEChunkData | string) => {
+      if (requestVersion.value !== currentRequestVersion) return;
 
-        if (typeof chunk === 'string') {
-          assistantMessage.content += chunk;
-        } else if (chunk.type === 'delta') {
-          assistantMessage.content += chunk.content ?? '';
-        } else if (chunk.type === 'error') {
-          assistantMessage.content += `\n[error] ${chunk.content ?? ''}`;
-        } else {
-          return;
-        }
+      if (typeof chunk === 'string') {
+        assistantMessage.content += chunk;
+      } else if (chunk.type === 'meta') {
+        currentConversationId.value = chunk.conversationId;
+        syncConversationMeta(chunk.conversationId, chunk.title);
+      } else if (chunk.type === 'delta') {
+        assistantMessage.content += chunk.content ?? '';
+      } else if (chunk.type === 'error') {
+        assistantMessage.content += `\n[error] ${chunk.content ?? ''}`;
+      } else {
+        return;
+      }
 
-        assistantMessage.contentArray = splitLines(assistantMessage.content);
-        messages.value = [...messages.value];
-        scrollToBottom();
-      },
-    });
-  } catch (error) {
-    if (requestVersion.value === currentRequestVersion) {
-      assistantMessage.content += '\n[error] 请求失败，请稍后重试。';
       assistantMessage.contentArray = splitLines(assistantMessage.content);
       messages.value = [...messages.value];
-    }
-    console.error('AI send failed', error);
-  } finally {
-    if (requestVersion.value === currentRequestVersion) {
-      loading.value = false;
       scrollToBottom();
-    }
+    },
+  });
+
+  if (requestVersion.value === currentRequestVersion) {
+    loading.value = false;
+    abortController.value = null;
+    await loadConversationList();
+    scrollToBottom();
   }
 };
+
+onMounted(async () => {
+  await loadConversationList();
+  if (conversationList.value.length > 0) {
+    await openConversation(conversationList.value[0].id);
+  } else {
+    await createConversationForCurrentSelection();
+  }
+});
 
 watch(
   () => messages.value.length,
@@ -448,7 +523,8 @@ watch(
   background: rgb(248 250 252 / 80%);
 }
 
-.ai-chat-sidebar__session:hover {
+.ai-chat-sidebar__session:hover,
+.ai-chat-sidebar__session--active {
   border-color: rgb(59 130 246 / 20%);
   background: #f1f7ff;
 }
@@ -460,31 +536,38 @@ watch(
 }
 
 .ai-chat-sidebar__session-preview {
-  font-size: 12px;
-  color: #6b7280;
+  width: 100%;
+  overflow: hidden;
+  color: #64748b;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ai-chat-sidebar__session-time {
-  font-size: 11px;
+  font-size: 12px;
   color: #94a3b8;
 }
 
 .ai-chat-sidebar__placeholder {
-  font-size: 12px;
+  font-size: 13px;
   color: #94a3b8;
-  padding: 8px 4px;
 }
 
 .ai-chat-sidebar__tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .ai-chat-workbench {
   display: flex;
+  min-width: 0;
   flex-direction: column;
-  gap: 16px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 18px 48px rgb(15 23 42 / 8%);
 }
 
 .ai-chat-header {
@@ -492,107 +575,105 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 20px;
-  border-radius: 16px;
-  border: 1px solid rgb(15 23 42 / 6%);
-  background: rgb(255 255 255 / 92%);
+  padding: 20px 24px;
+  border-bottom: 1px solid rgb(226 232 240 / 80%);
 }
 
 .ai-chat-header__info h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 700;
-  color: #0f172a;
 }
 
 .ai-chat-header__info p {
-  margin: 4px 0 0;
-  font-size: 13px;
+  margin: 6px 0 0;
   color: #64748b;
 }
 
 .ai-chat-header__controls {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .ai-chat-select {
-  width: 130px;
+  width: 140px;
 }
 
 .ai-chat-select--model {
-  width: 190px;
+  width: 220px;
 }
 
 .ai-chat-main {
   flex: 1;
+  overflow: hidden;
+  padding: 0 24px;
+}
+
+.ai-chat-empty {
   display: flex;
+  height: 100%;
   flex-direction: column;
-  border-radius: 18px;
-  border: 1px solid rgb(15 23 42 / 6%);
-  background: rgb(255 255 255 / 96%);
-  padding: 20px;
-  min-height: 520px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
 }
 
 .ai-chat-empty h3 {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #111827;
+  font-size: 28px;
 }
 
 .ai-chat-empty p {
-  margin: 6px 0 0;
-  font-size: 13px;
-  color: #6b7280;
+  max-width: 560px;
+  margin: 0;
+  color: #64748b;
 }
 
 .ai-chat-prompts {
-  margin-top: 20px;
   display: grid;
+  width: 100%;
+  max-width: 880px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 16px;
+  margin-top: 12px;
 }
 
 .ai-chat-prompt {
-  text-align: left;
   cursor: pointer;
-  border-radius: 14px;
-  border: 1px solid rgb(148 163 184 / 25%);
-  background: linear-gradient(145deg, #fff 0%, #f7fbff 100%);
-  transition: all 0.2s ease;
+  border-radius: 16px;
+  border: 1px solid rgb(148 163 184 / 12%);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .ai-chat-prompt:hover {
-  transform: translateY(-1px);
-  border-color: rgb(59 130 246 / 32%);
-  box-shadow: 0 10px 18px rgb(15 23 42 / 8%);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgb(37 99 235 / 10%);
 }
 
 .ai-chat-prompt__title {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
-  color: #1f2937;
+  color: #0f172a;
 }
 
 .ai-chat-prompt__detail {
-  margin-top: 6px;
-  font-size: 13px;
-  line-height: 1.5;
+  margin-top: 8px;
   color: #64748b;
 }
 
 .ai-chat-thread {
   height: 100%;
-  overflow-y: auto;
-  padding: 8px 4px 24px;
+  overflow: auto;
+  padding: 24px 0;
 }
 
 .ai-chat-row {
   display: flex;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .ai-chat-row.user {
@@ -604,55 +685,29 @@ watch(
 }
 
 .ai-chat-message {
-  width: fit-content;
-  max-width: min(720px, 82vw);
-}
-
-.ai-chat-row.user :deep(.t-chat-message) {
-  flex-direction: row-reverse;
-}
-
-.ai-chat-row.user :deep(.t-chat-message__content) {
-  align-items: flex-end;
-}
-
-.ai-chat-row.user :deep(.t-chat-message__name),
-.ai-chat-row.user :deep(.t-chat-message__datetime) {
-  text-align: right;
+  max-width: min(860px, 100%);
 }
 
 .ai-chat-bubble {
-  max-width: 100%;
-  border-radius: 14px;
-  padding: 12px 14px;
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  box-shadow: 0 8px 18px rgb(15 23 42 / 6%);
-  line-height: 1.65;
-  font-size: 14px;
-  color: #0f172a;
+  padding: 14px 16px;
+  border-radius: 16px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .ai-chat-bubble--assistant {
-  background: #fff;
+  border: 1px solid rgb(148 163 184 / 12%);
+  background: #f8fafc;
+  color: #0f172a;
 }
 
 .ai-chat-bubble--user {
-  border-color: rgb(59 130 246 / 35%);
-  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-}
-
-.ai-chat-row.user .ai-chat-bubble {
-  border-top-right-radius: 6px;
-}
-
-.ai-chat-row.assistant .ai-chat-bubble {
-  border-top-left-radius: 6px;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #fff;
 }
 
 .ai-chat-bubble p {
   margin: 0;
-  white-space: pre-wrap;
 }
 
 .ai-chat-actionbar {
@@ -660,65 +715,40 @@ watch(
 }
 
 .ai-chat-loading {
-  margin-top: 4px;
-  padding-left: 50px;
+  display: flex;
+  justify-content: flex-start;
 }
 
 .ai-chat-footer {
-  padding: 12px 20px 18px;
-  border-top: 1px solid rgb(15 23 42 / 5%);
-  background: rgb(255 255 255 / 95%);
+  padding: 16px 24px 24px;
+  border-top: 1px solid rgb(226 232 240 / 80%);
 }
 
 .ai-chat-footer__hint {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  color: #64748b;
   font-size: 12px;
-  color: var(--td-text-color-placeholder);
 }
 
 :deep(.t-chat-sender__textarea) {
-  border: 1px solid #dbe6f4;
-  background: #f8fbff;
-  border-radius: 14px;
-  box-shadow: none;
+  border-radius: 16px;
 }
 
-:deep(.t-chat-sender__textarea--focus) {
-  border-color: rgb(59 130 246 / 50%);
-}
-
-:deep(.t-chat-sender__button .t-button) {
-  border-radius: 12px;
-}
-
-@media (width <= 1200px) {
+@media (width <= 960px) {
   .ai-chat-page {
     grid-template-columns: 1fr;
   }
 
-  .ai-chat-sidebar {
-    order: 2;
-  }
-
-  .ai-chat-workbench {
-    order: 1;
+  .ai-chat-prompts {
+    grid-template-columns: 1fr;
   }
 
   .ai-chat-header {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .ai-chat-header__controls {
-    width: 100%;
-    flex-wrap: wrap;
-  }
-
-  .ai-chat-select,
-  .ai-chat-select--model {
-    width: 100%;
   }
 }
 </style>

@@ -1,3 +1,4 @@
+import { useUserStore } from '@/store';
 import type { SSEChunkData } from '@/types/modules/ai/chatIntl';
 
 export interface SSEHandlers {
@@ -29,14 +30,19 @@ export const fetchSSE = async (url: string, body: any, handlers: SSEHandlers, op
   try {
     const method = options.method ?? 'POST';
     const finalUrl = `${url}${buildQuery(options.query)}`;
-    const headers = {
+    const userStore = useUserStore();
+    const headers: Record<string, string> = {
       ...(method === 'GET' ? {} : { 'Content-Type': 'application/json' }),
       ...(options.headers ?? {}),
     };
+    if (userStore.token && !headers.Authorization) {
+      headers.Authorization = `Bearer ${userStore.token}`;
+    }
     const init: RequestInit = {
       method,
       headers,
       signal: options.signal,
+      credentials: 'include',
     };
     if (method !== 'GET') {
       init.body = JSON.stringify(body ?? {});

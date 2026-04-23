@@ -3,9 +3,8 @@ import type { ChatServiceConfig } from '@/types/modules/ai/chatIntl';
 import { fetchSSE } from './fetchSSE';
 
 export const defaultChatServiceConfig: ChatServiceConfig = {
-  send: async ({ messages, onMessage, provider, model }) => {
-    const latestUser = [...messages].reverse().find((item) => item.role === 'user');
-    const latestUserMessage = latestUser?.content?.trim() || '';
+  send: async ({ conversationId, message, onMessage, provider, model, signal }) => {
+    const latestUserMessage = message.trim();
     if (!latestUserMessage) {
       onMessage({ type: 'error', content: 'Empty query' });
       return;
@@ -13,7 +12,12 @@ export const defaultChatServiceConfig: ChatServiceConfig = {
 
     await fetchSSE(
       '/api/ai/chat/stream',
-      { provider, model, messages },
+      {
+        conversationId: conversationId ?? undefined,
+        message: latestUserMessage,
+        provider,
+        model,
+      },
       {
         onMessage: (data) => {
           if (typeof data === 'string') {
@@ -27,10 +31,10 @@ export const defaultChatServiceConfig: ChatServiceConfig = {
         },
       },
       {
-        method: 'GET',
+        method: 'POST',
         mode: 'sse',
+        signal,
         headers: { Accept: 'text/event-stream' },
-        query: { query: latestUserMessage, provider, model },
       },
     );
   },
