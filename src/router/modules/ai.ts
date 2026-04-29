@@ -29,17 +29,53 @@ export default [
           },
         },
       },
-      // {
-      //   path: 'chat',
-      //   name: 'AIChat',
-      //   component: () => import('@/pages/ai/chat/index.vue'),
-      //   meta: {
-      //     title: {
-      //       zh_CN: 'AI对话',
-      //       en_US: 'AI Chat',
-      //     },
-      //   },
-      // },
+      {
+        path: 'drama',
+        name: 'AIDrama',
+        component: () => import('@/pages/ai/drama/index.vue'),
+        meta: {
+          title: {
+            zh_CN: 'AI短剧',
+            en_US: 'AI Drama',
+          },
+        },
+      },
+      {
+        path: 'drama/projects/:id',
+        name: 'AIDramaDetail',
+        component: () => import('@/pages/ai/drama/detail.vue'),
+        meta: {
+          title: {
+            zh_CN: '短剧项目详情',
+            en_US: 'Drama Project Detail',
+          },
+          hidden: true,
+        },
+      },
+      {
+        path: 'drama/projects/:id/story',
+        name: 'AIDramaStory',
+        component: () => import('@/pages/ai/drama/story.vue'),
+        meta: {
+          title: {
+            zh_CN: '故事总纲',
+            en_US: 'Drama Story',
+          },
+          hidden: true,
+        },
+      },
+      {
+        path: 'drama/projects/:id/episodes/:episodeId',
+        name: 'AIDramaEpisodeDetail',
+        component: () => import('@/pages/ai/drama/episode/detail.vue'),
+        meta: {
+          title: {
+            zh_CN: '短剧单集详情',
+            en_US: 'Drama Episode Detail',
+          },
+          hidden: true,
+        },
+      },
     ],
   },
 ];
