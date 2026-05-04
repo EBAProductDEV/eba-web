@@ -21,6 +21,7 @@
           <search v-if="layout !== 'side'" :layout="layout" />
 
           <!-- 全局通知 -->
+          <task-center />
           <notice />
 
           <t-tooltip placement="bottom" :content="t('layout.header.help')">
@@ -86,6 +87,7 @@ import type { MenuRoute, ModeType } from '@/types/interface';
 import MenuContent from './MenuContent.vue';
 import Notice from './Notice.vue';
 import Search from './Search.vue';
+import TaskCenter from './TaskCenter.vue';
 
 const { theme, layout, showLogo, menu, isFixed, isCompact } = defineProps({
   theme: {

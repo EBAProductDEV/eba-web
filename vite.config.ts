@@ -46,6 +46,7 @@ export default ({ mode }: ConfigEnv): UserConfig => {
         '/api': {
           target: 'http://localhost:10080',
           changeOrigin: true,
+          ws: true,
         },
       },
     },

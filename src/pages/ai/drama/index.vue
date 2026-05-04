@@ -17,6 +17,7 @@
           </div>
           <h3>{{ item.name }}</h3>
           <div class="meta-row">
+            <span>{{ aspectRatioLabel(item.aspectRatio) }}</span>
             <span>{{ item.type }}</span>
             <span>{{ item.totalEpisodes }}集</span>
             <span>{{ item.episodeDurationMinutes }}分钟/集</span>
@@ -46,6 +47,12 @@
       <t-form ref="formRef" :data="form" :rules="rules" label-width="110px">
         <t-form-item label="项目名称" name="name">
           <t-input v-model="form.name" placeholder="例如：逆袭保洁阿姨" />
+        </t-form-item>
+        <t-form-item label="画面比例" name="aspectRatio">
+          <t-radio-group v-model="form.aspectRatio">
+            <t-radio-button value="PORTRAIT_9_16">竖屏 9:16</t-radio-button>
+            <t-radio-button value="LANDSCAPE_16_9">横屏 16:9</t-radio-button>
+          </t-radio-group>
         </t-form-item>
         <t-form-item label="类型" name="type">
           <t-select v-model="form.type" placeholder="选择短剧类型">
@@ -95,6 +102,7 @@ const formRef = ref();
 
 const form = reactive<DramaSeriesCreateRequest>({
   name: '',
+  aspectRatio: 'PORTRAIT_9_16',
   type: '',
   intro: '',
   theme: '',
@@ -105,6 +113,7 @@ const form = reactive<DramaSeriesCreateRequest>({
 
 const rules: FormRules<DramaSeriesCreateRequest> = {
   name: [{ required: true, message: '请输入项目名称', type: 'error' }],
+  aspectRatio: [{ required: true, message: '请选择画面比例', type: 'error' }],
   type: [{ required: true, message: '请选择类型', type: 'error' }],
   totalEpisodes: [{ required: true, message: '请输入总集数', type: 'error' }],
   episodeDurationMinutes: [{ required: true, message: '请输入单集时长', type: 'error' }],
@@ -112,12 +121,17 @@ const rules: FormRules<DramaSeriesCreateRequest> = {
 
 function resetForm() {
   form.name = '';
+  form.aspectRatio = 'PORTRAIT_9_16';
   form.type = '';
   form.intro = '';
   form.theme = '';
   form.style = '';
   form.totalEpisodes = 12;
   form.episodeDurationMinutes = 2;
+}
+
+function aspectRatioLabel(value?: string) {
+  return value === 'LANDSCAPE_16_9' ? '横屏 16:9' : '竖屏 9:16';
 }
 
 function formatDate(value: string) {

@@ -65,6 +65,18 @@ export default [
         },
       },
       {
+        path: 'drama/projects/:id/characters/:characterId',
+        name: 'AIDramaCharacterDetail',
+        component: () => import('@/pages/ai/drama/character/detail.vue'),
+        meta: {
+          title: {
+            zh_CN: '短剧角色详情',
+            en_US: 'Drama Character Detail',
+          },
+          hidden: true,
+        },
+      },
+      {
         path: 'drama/projects/:id/episodes/:episodeId',
         name: 'AIDramaEpisodeDetail',
         component: () => import('@/pages/ai/drama/episode/detail.vue'),
