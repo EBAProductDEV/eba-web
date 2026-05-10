@@ -11,6 +11,9 @@
     <t-loading :loading="loading" text="加载短剧项目中...">
       <div v-if="seriesList.length" class="project-grid">
         <article v-for="item in seriesList" :key="item.id" class="project-card" @click="goDetail(item.id)">
+          <button class="edit-button" title="编辑项目" @click.stop="openEditDialog(item)">
+            <edit-2-icon />
+          </button>
           <button class="delete-button" title="删除项目" @click.stop="confirmDelete(item)">×</button>
           <div class="folder-icon">
             <folder-icon />
@@ -39,7 +42,7 @@
 
     <t-dialog
       v-model:visible="createVisible"
-      header="新建短剧项目"
+      :header="editingSeries ? '编辑短剧项目' : '新建短剧项目'"
       width="640px"
       :confirm-loading="submitting"
       @confirm="submitCreate"
@@ -70,6 +73,9 @@
             :autosize="{ minRows: 3, maxRows: 5 }"
           />
         </t-form-item>
+        <t-form-item label="题材" name="theme">
+          <t-input v-model="form.theme" placeholder="例如：重生复仇、仙门虐恋、职场逆袭" />
+        </t-form-item>
         <t-form-item label="总集数" name="totalEpisodes">
           <t-input-number v-model="form.totalEpisodes" :min="1" :max="500" />
         </t-form-item>
@@ -84,13 +90,13 @@
   </div>
 </template>
 <script setup lang="ts">
-import { FolderIcon } from 'tdesign-icons-vue-next';
+import { Edit2Icon, FolderIcon } from 'tdesign-icons-vue-next';
 import type { FormRules } from 'tdesign-vue-next';
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next';
 import { onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { createDramaSeries, deleteDramaSeries, listDramaSeries } from '@/api/modules/ai/drama';
+import { createDramaSeries, deleteDramaSeries, listDramaSeries, updateDramaSeries } from '@/api/modules/ai/drama';
 import type { DramaSeriesCreateRequest, DramaSeriesSummary } from '@/types/modules/ai/drama';
 
 const router = useRouter();
@@ -99,6 +105,7 @@ const submitting = ref(false);
 const createVisible = ref(false);
 const seriesList = ref<DramaSeriesSummary[]>([]);
 const formRef = ref();
+const editingSeries = ref<DramaSeriesSummary>();
 
 const form = reactive<DramaSeriesCreateRequest>({
   name: '',
@@ -149,7 +156,21 @@ async function loadSeries() {
 }
 
 function openCreateDialog() {
+  editingSeries.value = undefined;
   resetForm();
+  createVisible.value = true;
+}
+
+function openEditDialog(item: DramaSeriesSummary) {
+  editingSeries.value = item;
+  form.name = item.name;
+  form.aspectRatio = item.aspectRatio || 'PORTRAIT_9_16';
+  form.type = item.type;
+  form.intro = item.intro || '';
+  form.theme = item.theme || '';
+  form.style = item.style || '';
+  form.totalEpisodes = item.totalEpisodes;
+  form.episodeDurationMinutes = item.episodeDurationMinutes;
   createVisible.value = true;
 }
 
@@ -158,6 +179,14 @@ async function submitCreate() {
   if (result !== true) return;
   submitting.value = true;
   try {
+    if (editingSeries.value) {
+      await updateDramaSeries(editingSeries.value.id, { ...form });
+      MessagePlugin.success('项目信息已更新');
+      createVisible.value = false;
+      editingSeries.value = undefined;
+      await loadSeries();
+      return;
+    }
     const created = await createDramaSeries({ ...form });
     MessagePlugin.success('短剧项目已创建');
     createVisible.value = false;
@@ -271,6 +300,26 @@ onMounted(loadSeries);
   border: 0;
   border-radius: 50%;
   cursor: pointer;
+}
+
+.edit-button {
+  position: absolute;
+  top: 18px;
+  right: 54px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  color: #6757d8;
+  background: #f3f0ff;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  place-items: center;
+
+  :deep(svg) {
+    width: 15px;
+    height: 15px;
+  }
 }
 
 .folder-icon {

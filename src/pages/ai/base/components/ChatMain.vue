@@ -149,6 +149,12 @@
   </div>
 </template>
 <script setup lang="ts">
+import {
+  ChatActionbar as TChatActionbar,
+  ChatLoading as TChatLoading,
+  ChatMessage as TChatMessage,
+  ChatSender as TChatSender,
+} from '@tdesign-vue-next/chat';
 import dayjs from 'dayjs';
 import { AddIcon, RefreshIcon } from 'tdesign-icons-vue-next';
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';

@@ -15,6 +15,7 @@ export interface DramaSeriesSummary {
   aspectRatio: string;
   type: string;
   intro?: string;
+  theme?: string;
   style?: string;
   totalEpisodes: number;
   episodeDurationMinutes: number;
@@ -49,6 +50,8 @@ export interface DramaCharacterCreateRequest {
   appearance?: string;
   costume?: string;
   personality?: string;
+  voiceProfileType?: 'PROMPT' | 'VOICE_ID' | 'AUDIO_ASSET_ID';
+  voiceProfile?: string;
   relationship?: string;
 }
 
@@ -172,6 +175,37 @@ export interface DramaTask {
   updatedAt: string;
 }
 
+export interface DramaImagePromptPreview {
+  targetType: 'SCENE' | 'SHOT' | string;
+  targetId: number;
+  assetType: string;
+  assetSubType?: string;
+  title: string;
+  prompt: string;
+  parameters: Record<string, unknown>;
+  referenceImages?: DramaAsset[];
+}
+
+export type DramaVideoPromptPreview = DramaImagePromptPreview;
+
+export interface DramaVideoGenerateParameters {
+  durationSeconds?: number;
+  resolution?: string;
+  fps?: number;
+  ratio?: string;
+}
+
+export interface DramaImageGenerateParameters {
+  imageSize?: string;
+  imageQuality?: string;
+  imageFormat?: string;
+}
+
+export interface DramaImagePromptReferenceLabel {
+  label: string;
+  value: string;
+}
+
 export interface DramaTaskCenterItem {
   id: number;
   seriesId?: number;
@@ -203,6 +237,24 @@ export interface DramaTaskCenter {
   activeCount: number;
   totalCount: number;
   tasks: DramaTaskCenterItem[];
+}
+
+export interface DramaJianyingDraft {
+  id: number;
+  editTaskId: number;
+  episodeId: number;
+  referenceVideoPath?: string;
+  referenceVideoUrl?: string;
+  cleanVideoPath?: string;
+  voiceMixPath?: string;
+  voiceClipsDir?: string;
+  bgmSfxPath?: string;
+  subtitleSrtPath?: string;
+  danmakuCsvPath?: string;
+  packageZipPath?: string;
+  packageDownloadUrl?: string;
+  manifestPath?: string;
+  createdAt: string;
 }
 
 export interface DramaSeriesDetail extends DramaSeriesSummary {

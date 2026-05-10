@@ -469,6 +469,13 @@
                           >
                             删除
                           </button>
+                          <button
+                            class="video-prompt-button"
+                            type="button"
+                            @click.stop="openImagePromptViewer(findSceneImage(group.scene.id), '场景参考图提示词')"
+                          >
+                            预览提示词
+                          </button>
                           <div class="image-preview-mask">点击预览</div>
                         </template>
                         <div
@@ -482,6 +489,14 @@
                         <div v-else class="asset-placeholder empty-generation-card">
                           <div class="generation-icon">AI</div>
                           <small>生成场景参考图</small>
+                          <button
+                            class="single-generate-button secondary"
+                            type="button"
+                            :disabled="generatingSingleSceneImages[group.scene.id]"
+                            @click.stop="handleEditSceneImagePrompt(group.scene.id)"
+                          >
+                            编辑提示词
+                          </button>
                           <button
                             class="single-generate-button"
                             type="button"
@@ -530,6 +545,13 @@
                           >
                             删除
                           </button>
+                          <button
+                            class="video-prompt-button"
+                            type="button"
+                            @click.stop="openImagePromptViewer(findShotImage(shot.id), '镜头首帧图提示词')"
+                          >
+                            预览提示词
+                          </button>
                           <div class="image-preview-mask">点击预览</div>
                         </template>
                         <div
@@ -543,6 +565,14 @@
                         <div v-else class="asset-placeholder empty-generation-card">
                           <div class="generation-icon">AI</div>
                           <small>生成镜头首帧图</small>
+                          <button
+                            class="single-generate-button secondary"
+                            type="button"
+                            :disabled="generatingSingleShotImages[shot.id]"
+                            @click.stop="handleEditShotImagePrompt(shot.id)"
+                          >
+                            编辑提示词
+                          </button>
                           <button
                             class="single-generate-button"
                             type="button"
@@ -566,7 +596,7 @@
             <t-empty v-else description="请先完成台词生成步骤，再进入图片生成。" />
           </template>
 
-          <template v-else>
+          <template v-else-if="activeStepKey === 'video'">
             <div class="section-title compact">
               <div>
                 <span class="section-kicker">视频生成</span>
@@ -642,12 +672,27 @@
                         >
                           删除
                         </button>
+                        <button
+                          class="video-prompt-button"
+                          type="button"
+                          @click.stop="openVideoPromptViewer(findShotVideo(shot.id))"
+                        >
+                          提示词
+                        </button>
                         <div class="image-preview-mask">点击预览</div>
                       </template>
                       <div
                         v-else-if="isShotVideoGenerating(shot.id)"
                         class="asset-placeholder generating-placeholder video-generating-placeholder"
                       >
+                        <button
+                          class="video-prompt-button is-visible"
+                          type="button"
+                          :disabled="!shot.videoPrompt"
+                          @click.stop="openShotVideoPromptViewer(shot)"
+                        >
+                          提示词
+                        </button>
                         <div class="ai-render-orb"></div>
                         <span>AI 生视频中</span>
                         <small>{{ videoTaskStageText(findShotVideoTask(shot.id)) }}</small>
@@ -667,6 +712,14 @@
                         <div v-else class="generation-icon">AI</div>
                         <small>{{ findShotImage(shot.id) ? '使用首帧图生成视频' : '请先生成首帧图' }}</small>
                         <button
+                          class="single-generate-button secondary"
+                          type="button"
+                          :disabled="!findShotImage(shot.id) || generatingSingleShotVideos[shot.id]"
+                          @click.stop="handleEditShotVideoPrompt(shot.id)"
+                        >
+                          编辑提示词
+                        </button>
+                        <button
                           class="single-generate-button"
                           type="button"
                           :disabled="!findShotImage(shot.id) || generatingSingleShotVideos[shot.id]"
@@ -676,7 +729,7 @@
                         </button>
                       </div>
                       <div class="asset-meta">
-                        <strong>镜头 {{ shot.shotNo }} · {{ shot.durationSeconds || 5 }} 秒</strong>
+                        <strong>镜头 {{ shot.shotNo }} · {{ shot.durationSeconds || 10 }} 秒</strong>
                         <span>{{ shot.videoPrompt || shot.action || '暂无视频提示词' }}</span>
                       </div>
                     </article>
@@ -686,6 +739,74 @@
               </div>
             </template>
             <t-empty v-else description="请先完成图片步骤，再进入视频生成。" />
+          </template>
+
+          <template v-else>
+            <div class="section-title compact">
+              <div>
+                <span class="section-kicker">剪映初稿</span>
+                <h2>成片预览与剪映素材包</h2>
+                <p>自动合成参考成片，同时输出干净视频、配音分轨、BGM 音效、字幕和弹幕时间表。</p>
+              </div>
+              <div class="panel-actions">
+                <t-button
+                  theme="primary"
+                  :disabled="!isStepCompleted('VIDEO') || Boolean(activeJianyingDraftTask)"
+                  :loading="generatingJianyingDraft || Boolean(activeJianyingDraftTask)"
+                  @click="handleGenerateJianyingDraft"
+                >
+                  {{ activeJianyingDraftTask ? '生成中...' : '合成剪映初稿' }}
+                </t-button>
+              </div>
+            </div>
+
+            <template v-if="isStepCompleted('VIDEO')">
+              <div class="draft-workbench">
+                <div v-if="activeJianyingDraftTask" class="draft-status">
+                  <div>
+                    <strong>{{ activeJianyingDraftTask.stage || 'RUNNING' }}</strong>
+                    <span>{{ activeJianyingDraftTask.errorMessage || '正在生成剪映初稿素材包' }}</span>
+                  </div>
+                  <t-progress theme="line" :percentage="activeJianyingDraftTask.progress || 0" :show-info="true" />
+                </div>
+
+                <section v-if="latestJianyingDraft" class="draft-result">
+                  <div class="draft-preview">
+                    <video
+                      v-if="authenticatedJianyingDraftPreviewUrl"
+                      :key="authenticatedJianyingDraftPreviewUrl"
+                      :src="authenticatedJianyingDraftPreviewUrl"
+                      controls
+                      preload="metadata"
+                    ></video>
+                    <t-empty v-else description="参考成片路径已生成，但暂不可预览。" />
+                  </div>
+                  <div class="draft-files">
+                    <strong>剪映素材包</strong>
+                    <span>生成时间：{{ latestJianyingDraft.createdAt }}</span>
+                    <ul>
+                      <li>参考成片：{{ latestJianyingDraft.referenceVideoPath }}</li>
+                      <li>干净视频：{{ latestJianyingDraft.cleanVideoPath }}</li>
+                      <li>配音混音：{{ latestJianyingDraft.voiceMixPath }}</li>
+                      <li>BGM 音效：{{ latestJianyingDraft.bgmSfxPath }}</li>
+                      <li>字幕：{{ latestJianyingDraft.subtitleSrtPath }}</li>
+                      <li>弹幕时间表：{{ latestJianyingDraft.danmakuCsvPath }}</li>
+                    </ul>
+                    <t-button
+                      v-if="latestJianyingDraft.packageDownloadUrl"
+                      theme="primary"
+                      variant="outline"
+                      @click="downloadJianyingPackage"
+                    >
+                      下载剪映素材包
+                    </t-button>
+                  </div>
+                </section>
+
+                <t-empty v-else description="还没有剪映初稿。点击合成后，会在本地素材库生成参考成片和可编辑素材包。" />
+              </div>
+            </template>
+            <t-empty v-else description="请先完成视频步骤，再合成剪映初稿。" />
           </template>
         </section>
       </template>
@@ -813,6 +934,335 @@
     </t-dialog>
 
     <t-dialog
+      v-model:visible="imagePromptDialogVisible"
+      width="1120px"
+      placement="center"
+      :footer="false"
+      :close-on-overlay-click="false"
+      destroy-on-close
+    >
+      <template #header>
+        <div class="image-prompt-dialog-title">
+          <span>AI 图片任务确认</span>
+          <strong>{{ imagePromptPreview?.title || '图片生成' }}</strong>
+        </div>
+      </template>
+      <div v-if="imagePromptPreview" class="image-prompt-dialog">
+        <section class="image-prompt-reference-zone">
+          <div class="image-prompt-reference-strip">
+            <div
+              v-for="(asset, index) in imagePromptReferenceImages"
+              :key="asset.id"
+              class="image-prompt-reference-thumb"
+            >
+              <img :src="asset.accessUrl" :alt="asset.fileName" />
+              <span class="video-reference-token">@图片{{ index + 1 }}</span>
+              <button
+                class="image-prompt-reference-remove"
+                type="button"
+                @click.stop="removeImagePromptReference(asset.id)"
+              >
+                ×
+              </button>
+              <div class="image-prompt-reference-popover">
+                <img :src="asset.accessUrl" :alt="asset.fileName" />
+              </div>
+            </div>
+            <button
+              class="image-prompt-reference-upload"
+              type="button"
+              :disabled="loadingProjectImageAssets"
+              @click="openImageAssetPicker('IMAGE')"
+            >
+              +
+            </button>
+          </div>
+        </section>
+
+        <section class="image-spec-panel">
+          <div class="video-spec-field">
+            <span>图片尺寸</span>
+            <div class="video-segmented-control">
+              <button
+                v-for="item in imageSizeOptions"
+                :key="item.value"
+                type="button"
+                :class="{ 'is-active': imageSize === item.value }"
+                @click="imageSize = item.value"
+              >
+                {{ item.label }}
+              </button>
+            </div>
+          </div>
+          <div class="video-spec-field">
+            <span>图片质量</span>
+            <div class="video-segmented-control">
+              <button
+                v-for="item in imageQualityOptions"
+                :key="item.value"
+                type="button"
+                :class="{ 'is-active': imageQuality === item.value }"
+                @click="imageQuality = item.value"
+              >
+                {{ item.label }}
+              </button>
+            </div>
+          </div>
+          <div class="video-spec-field">
+            <span>图片格式</span>
+            <div class="video-segmented-control">
+              <button
+                v-for="item in imageFormatOptions"
+                :key="item.value"
+                type="button"
+                :class="{ 'is-active': imageFormat === item.value }"
+                @click="imageFormat = item.value"
+              >
+                {{ item.label }}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <div class="image-prompt-body">
+          <section class="image-prompt-editor">
+            <div class="image-prompt-section-head">
+              <div>
+                <strong>中文提示词</strong>
+                <span>可直接修改，确认后按这里的内容提交</span>
+              </div>
+              <span>{{ imagePromptWordCount }} 字</span>
+            </div>
+            <t-loading :loading="imagePromptLoading" text="提示词加载中...">
+              <div v-if="imagePromptLoadError" class="video-prompt-load-error">
+                {{ imagePromptLoadError }}
+              </div>
+              <t-textarea
+                v-else
+                v-model="imagePromptText"
+                class="image-prompt-textarea"
+                placeholder="请输入图片生成提示词，输入 @ 可引用项目参考图"
+                :disabled="imagePromptLoading"
+                :autosize="{ minRows: 14, maxRows: 20 }"
+                @input="handleImagePromptInput"
+              />
+            </t-loading>
+          </section>
+        </div>
+
+        <footer class="image-prompt-footer">
+          <t-button
+            v-if="!imagePromptText.trim()"
+            variant="outline"
+            :loading="imagePromptLoading"
+            :disabled="imagePromptSubmitting || Boolean(imagePromptLoadError)"
+            @click="handleGenerateImagePrompt"
+          >
+            生成提示词
+          </t-button>
+          <t-button variant="outline" :disabled="imagePromptSubmitting" @click="imagePromptDialogVisible = false">
+            取消
+          </t-button>
+          <t-button
+            theme="primary"
+            :loading="imagePromptSubmitting"
+            :disabled="imagePromptLoading || Boolean(imagePromptLoadError)"
+            @click="handleConfirmImagePrompt"
+          >
+            确认并提交任务
+          </t-button>
+        </footer>
+      </div>
+    </t-dialog>
+
+    <t-dialog
+      v-model:visible="videoPromptDialogVisible"
+      width="1120px"
+      placement="center"
+      :footer="false"
+      :close-on-overlay-click="false"
+      destroy-on-close
+    >
+      <template #header>
+        <div class="image-prompt-dialog-title">
+          <span>AI 视频任务确认</span>
+          <strong>{{ videoPromptPreview?.title || '视频生成' }}</strong>
+        </div>
+      </template>
+      <div v-if="videoPromptPreview" class="image-prompt-dialog">
+        <section class="image-prompt-reference-zone">
+          <div class="image-prompt-reference-strip">
+            <div
+              v-for="(asset, index) in videoPromptReferenceImages"
+              :key="asset.id"
+              class="image-prompt-reference-thumb"
+            >
+              <img :src="asset.accessUrl" :alt="asset.fileName" />
+              <span class="video-reference-token">@图片{{ index + 1 }}</span>
+              <button
+                class="image-prompt-reference-remove"
+                type="button"
+                @click.stop="removeVideoPromptReference(asset.id)"
+              >
+                脳
+              </button>
+              <div class="image-prompt-reference-popover">
+                <img :src="asset.accessUrl" :alt="asset.fileName" />
+              </div>
+            </div>
+            <button
+              class="image-prompt-reference-upload"
+              type="button"
+              :disabled="loadingProjectImageAssets"
+              @click="openImageAssetPicker('VIDEO')"
+            >
+              +
+            </button>
+          </div>
+        </section>
+
+        <section class="video-spec-panel">
+          <div class="video-spec-field duration">
+            <span>视频时长</span>
+            <div class="video-duration-control">
+              <button type="button" :disabled="videoDurationSeconds <= 9" @click="videoDurationSeconds -= 1">-</button>
+              <strong>{{ videoDurationSeconds }} 秒</strong>
+              <button type="button" :disabled="videoDurationSeconds >= 12" @click="videoDurationSeconds += 1">+</button>
+            </div>
+          </div>
+          <div class="video-spec-field">
+            <span>视频质量</span>
+            <div class="video-segmented-control">
+              <button
+                v-for="item in videoResolutionOptions"
+                :key="item.value"
+                type="button"
+                :class="{ 'is-active': videoResolution === item.value }"
+                @click="videoResolution = item.value"
+              >
+                {{ item.label }}
+              </button>
+            </div>
+          </div>
+          <div class="video-spec-field">
+            <span>视频帧数</span>
+            <div class="video-segmented-control">
+              <button
+                v-for="item in videoFpsOptions"
+                :key="item.value"
+                type="button"
+                :class="{ 'is-active': videoFps === item.value }"
+                @click="videoFps = item.value"
+              >
+                {{ item.label }}
+              </button>
+            </div>
+          </div>
+          <div class="video-spec-field ratio">
+            <span>画面比例</span>
+            <div class="video-segmented-control">
+              <button
+                v-for="item in videoRatioOptions"
+                :key="item.value"
+                type="button"
+                :class="{ 'is-active': videoRatio === item.value }"
+                @click="videoRatio = item.value"
+              >
+                {{ item.label }}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <div class="image-prompt-body">
+          <section class="image-prompt-editor">
+            <div class="image-prompt-section-head">
+              <div>
+                <strong>视频生成提示词</strong>
+                <span>确认后会按这里的内容提交给视频模型，可写音色、口型、无配乐、无音效等要求</span>
+              </div>
+              <span>{{ videoPromptWordCount }} 字</span>
+            </div>
+            <t-loading :loading="videoPromptLoading" text="提示词加载中...">
+              <div v-if="videoPromptLoadError" class="video-prompt-load-error">
+                {{ videoPromptLoadError }}
+              </div>
+              <t-textarea
+                v-else
+                v-model="videoPromptText"
+                class="image-prompt-textarea"
+                placeholder="输入视频生成提示词，输入 @ 可引用项目参考图"
+                :disabled="videoPromptLoading"
+                :autosize="{ minRows: 14, maxRows: 20 }"
+                @input="handleVideoPromptInput"
+              />
+            </t-loading>
+          </section>
+        </div>
+
+        <footer class="image-prompt-footer">
+          <t-button
+            v-if="!videoPromptText.trim()"
+            variant="outline"
+            :loading="videoPromptLoading"
+            :disabled="videoPromptSubmitting || Boolean(videoPromptLoadError)"
+            @click="handleGenerateVideoPrompt"
+          >
+            生成提示词
+          </t-button>
+          <t-button variant="outline" :disabled="videoPromptSubmitting" @click="videoPromptDialogVisible = false">
+            取消
+          </t-button>
+          <t-button
+            theme="primary"
+            :loading="videoPromptSubmitting"
+            :disabled="videoPromptLoading || Boolean(videoPromptLoadError)"
+            @click="handleSaveVideoPrompt"
+          >
+            保存提示词
+          </t-button>
+        </footer>
+      </div>
+    </t-dialog>
+
+    <t-dialog
+      v-model:visible="imageAssetPickerVisible"
+      header="选择项目素材"
+      width="880px"
+      :footer="false"
+      destroy-on-close
+    >
+      <div class="image-asset-picker">
+        <t-loading :loading="loadingProjectImageAssets" text="加载项目素材中...">
+          <div v-if="imageAssetCategoryTabs.length" class="image-asset-picker-categories">
+            <button
+              v-for="item in imageAssetCategoryTabs"
+              :key="item.key"
+              class="image-asset-category"
+              :class="{ 'is-active': activeImageAssetCategory === item.key }"
+              type="button"
+              @click="activeImageAssetCategory = item.key"
+            >
+              {{ item.label }} {{ item.count }}
+            </button>
+          </div>
+          <div v-if="categorizedProjectImageAssets.length" class="image-asset-picker-grid">
+            <button
+              v-for="asset in categorizedProjectImageAssets"
+              :key="asset.id"
+              class="image-asset-picker-item"
+              type="button"
+              @click="addProjectImageReference(asset)"
+            >
+              <img :src="asset.accessUrl" :alt="asset.fileName" />
+            </button>
+          </div>
+          <t-empty v-else description="暂无可选图片素材" />
+        </t-loading>
+      </div>
+    </t-dialog>
+
+    <t-dialog
       v-model:visible="assetPreviewVisible"
       width="980px"
       :footer="false"
@@ -860,6 +1310,24 @@
         </aside>
       </div>
     </t-dialog>
+
+    <t-dialog
+      v-model:visible="videoPromptViewerVisible"
+      width="920px"
+      :footer="false"
+      :header="
+        videoPromptViewerTitle ||
+        (videoPromptViewerAsset ? `镜头视频提示词 · ${imageAssetTitle(videoPromptViewerAsset)}` : '镜头视频提示词')
+      "
+    >
+      <div class="video-prompt-viewer">
+        <div class="video-prompt-viewer-head">
+          <span>{{ videoPromptViewerAsset?.fileName || videoPromptViewerTitle || '未选择视频素材' }}</span>
+          <strong>{{ fullVideoPromptWordCount }} 字</strong>
+        </div>
+        <pre>{{ fullVideoPromptText || '暂无保存的提示词' }}</pre>
+      </div>
+    </t-dialog>
   </div>
 </template>
 <script setup lang="ts">
@@ -871,6 +1339,7 @@ import {
   completeDramaEpisodeStep,
   deleteDramaAsset,
   generateDramaEpisodeDialogues,
+  generateDramaEpisodeJianyingDraft,
   generateDramaEpisodeNovel,
   generateDramaEpisodeSceneImages,
   generateDramaEpisodeScenes,
@@ -882,11 +1351,32 @@ import {
   generateDramaShotImage,
   generateDramaShotVideo,
   getDramaEpisodeDetail,
+  getDramaEpisodeJianyingDraft,
+  getSavedDramaSceneImagePrompt,
+  getSavedDramaShotImagePrompt,
+  getSavedDramaShotVideoPrompt,
+  listDramaSeriesImageAssets,
+  previewDramaSceneImage,
+  previewDramaShotImage,
+  previewDramaShotVideo,
   regenerateDramaEpisodeScript,
   rollbackDramaEpisodeStep,
   saveDramaEpisodeScript,
+  saveDramaShotVideoPrompt,
 } from '@/api/modules/ai/drama';
-import type { DramaAsset, DramaEpisodeDetail, DramaScene, DramaShot, DramaTask } from '@/types/modules/ai/drama';
+import { useUserStore } from '@/store';
+import type {
+  DramaAsset,
+  DramaEpisodeDetail,
+  DramaImageGenerateParameters,
+  DramaImagePromptPreview,
+  DramaJianyingDraft,
+  DramaScene,
+  DramaShot,
+  DramaTask,
+  DramaVideoGenerateParameters,
+  DramaVideoPromptPreview,
+} from '@/types/modules/ai/drama';
 
 interface SceneGroup {
   scene: DramaScene;
@@ -895,6 +1385,7 @@ interface SceneGroup {
 
 const route = useRoute();
 const router = useRouter();
+const userStore = useUserStore();
 const loading = ref(false);
 const generatingScript = ref(false);
 const generatingNovel = ref(false);
@@ -904,6 +1395,7 @@ const generatingDialogues = ref(false);
 const generatingSceneImages = ref(false);
 const generatingShotImages = ref(false);
 const generatingShotVideos = ref(false);
+const generatingJianyingDraft = ref(false);
 const generatingSingleSceneImages = ref<Record<number, boolean>>({});
 const generatingSingleShotImages = ref<Record<number, boolean>>({});
 const generatingSingleShotVideos = ref<Record<number, boolean>>({});
@@ -926,9 +1418,44 @@ const dialogueRegenerateReason = ref('');
 const scriptForm = ref('');
 const activeStepKey = ref('novel');
 const detail = ref<DramaEpisodeDetail>();
+const latestJianyingDraft = ref<DramaJianyingDraft | null>(null);
 const imageAutoRefreshTimer = ref<number>();
 const assetPreviewVisible = ref(false);
 const previewAsset = ref<DramaAsset>();
+const videoPromptViewerVisible = ref(false);
+const videoPromptViewerAsset = ref<DramaAsset>();
+const videoPromptViewerTitle = ref('');
+const videoPromptViewerText = ref('');
+const imagePromptDialogVisible = ref(false);
+const imagePromptSubmitting = ref(false);
+const imagePromptLoading = ref(false);
+const imagePromptLoadError = ref('');
+const imagePromptPreview = ref<DramaImagePromptPreview>();
+const imagePromptText = ref('');
+const imagePromptTarget = ref<{ type: 'SCENE' | 'SHOT'; id: number }>();
+const imagePromptReferences = ref<DramaAsset[]>([]);
+const imagePromptReferenceInsertPending = ref(false);
+const imageSize = ref('1024x1536');
+const imageQuality = ref('low');
+const imageFormat = ref('jpeg');
+const videoPromptDialogVisible = ref(false);
+const videoPromptSubmitting = ref(false);
+const videoPromptLoading = ref(false);
+const videoPromptLoadError = ref('');
+const videoPromptPreview = ref<DramaVideoPromptPreview>();
+const videoPromptText = ref('');
+const videoPromptTarget = ref<{ id: number }>();
+const videoPromptReferences = ref<DramaAsset[]>([]);
+const videoPromptReferenceInsertPending = ref(false);
+const videoDurationSeconds = ref(10);
+const videoResolution = ref('720p');
+const videoFps = ref(24);
+const videoRatio = ref('9:16');
+const imageAssetPickerVisible = ref(false);
+const imageAssetPickerMode = ref<'IMAGE' | 'VIDEO'>('IMAGE');
+const loadingProjectImageAssets = ref(false);
+const projectImageAssets = ref<DramaAsset[]>([]);
+const activeImageAssetCategory = ref('ALL');
 
 const projectId = computed(() => Number(route.params.id));
 const episodeId = computed(() => Number(route.params.episodeId));
@@ -939,6 +1466,9 @@ const novelPreviewText = computed(() => {
   const content = detail.value?.episode.novelContent?.trim() || '';
   return content.length > 520 ? `${content.slice(0, 520)}...` : content;
 });
+const authenticatedJianyingDraftPreviewUrl = computed(() =>
+  buildAuthenticatedFileUrl(latestJianyingDraft.value?.referenceVideoUrl),
+);
 const episodeStatusRank = computed(() => getStepRank(detail.value?.episode.status));
 const dialogueReadyCount = computed(
   () => detail.value?.shots.filter((shot) => isDialogueReady(shot.dialogue)).length || 0,
@@ -971,7 +1501,14 @@ const activeVideoTaskCount = computed(
       (task) => task.assetType === 'SHOT_VIDEO' && ['PENDING', 'RUNNING'].includes(task.status),
     ).length || 0,
 );
-const activeMediaTaskCount = computed(() => activeImageTaskCount.value + activeVideoTaskCount.value);
+const activeJianyingDraftTask = computed(() =>
+  detail.value?.tasks.find(
+    (task) => task.taskType === 'JIANYING_DRAFT_GENERATE' && ['PENDING', 'RUNNING'].includes(task.status),
+  ),
+);
+const activeMediaTaskCount = computed(
+  () => activeImageTaskCount.value + activeVideoTaskCount.value + (activeJianyingDraftTask.value ? 1 : 0),
+);
 const canCompleteImageStep = computed(
   () =>
     Boolean(sceneGroups.value.length && detail.value?.shots.length) &&
@@ -1054,6 +1591,94 @@ const previewPromptText = computed(() => {
   }
   return limitPreviewText(asset.prompt || '', 900);
 });
+const fullVideoPromptText = computed(() => {
+  if (videoPromptViewerText.value) return videoPromptViewerText.value;
+  const asset = videoPromptViewerAsset.value;
+  if (!asset) return '';
+  const shot = detail.value?.shots.find((item) => item.id === asset.shotId);
+  if (asset.assetType === 'SHOT_IMAGE') {
+    return asset.prompt || shot?.imagePrompt || '';
+  }
+  if (asset.assetType === 'SHOT_VIDEO') {
+    return asset.prompt || shot?.videoPrompt || '';
+  }
+  return asset.prompt || '';
+});
+const fullVideoPromptWordCount = computed(() => fullVideoPromptText.value.trim().length);
+const imagePromptWordCount = computed(() => imagePromptText.value.trim().length);
+const imagePromptReferenceImages = computed(() => imagePromptReferences.value);
+const videoPromptWordCount = computed(() => videoPromptText.value.trim().length);
+const videoPromptReferenceImages = computed(() => videoPromptReferences.value);
+const imageSizeOptions = [
+  { label: '竖图 1024×1536', value: '1024x1536' },
+  { label: '横图 1536×1024', value: '1536x1024' },
+  { label: '方图 1024×1024', value: '1024x1024' },
+];
+const imageQualityOptions = [
+  { label: '低', value: 'low' },
+  { label: '中', value: 'medium' },
+  { label: '高', value: 'high' },
+];
+const imageFormatOptions = [
+  { label: 'JPEG', value: 'jpeg' },
+  { label: 'PNG', value: 'png' },
+  { label: 'WebP', value: 'webp' },
+];
+const videoResolutionOptions = [
+  { label: '480p', value: '480p' },
+  { label: '720p', value: '720p' },
+  { label: '1080p', value: '1080p' },
+];
+const videoFpsOptions = [
+  { label: '24 fps', value: 24 },
+  { label: '25 fps', value: 25 },
+  { label: '30 fps', value: 30 },
+];
+const videoRatioOptions = [
+  { label: '竖屏 9:16', value: '9:16' },
+  { label: '横屏 16:9', value: '16:9' },
+];
+const selectableProjectImageAssets = computed(() => {
+  const references = imageAssetPickerMode.value === 'VIDEO' ? videoPromptReferences.value : imagePromptReferences.value;
+  const selectedIds = new Set(references.map((asset) => asset.id));
+  return projectImageAssets.value.filter((asset) => !selectedIds.has(asset.id));
+});
+const currentSelectedImageAssets = computed(() =>
+  imageAssetPickerMode.value === 'VIDEO' ? videoPromptReferences.value : imagePromptReferences.value,
+);
+const imageAssetCategoryTabs = computed(() => {
+  const categories = [
+    { key: 'ALL', label: '全部' },
+    { key: 'SELECTED', label: '当前已选素材' },
+    { key: 'CHARACTER', label: '角色' },
+    { key: 'SCENE', label: '场景' },
+    { key: 'SHOT', label: '镜头' },
+    { key: 'OTHER', label: '其他' },
+  ];
+  return categories
+    .map((category) => ({
+      ...category,
+      count:
+        category.key === 'ALL'
+          ? selectableProjectImageAssets.value.length
+          : category.key === 'SELECTED'
+            ? currentSelectedImageAssets.value.length
+            : selectableProjectImageAssets.value.filter((asset) => imageAssetCategoryKey(asset) === category.key)
+                .length,
+    }))
+    .filter((category) => category.key === 'ALL' || category.key === 'SELECTED' || category.count > 0);
+});
+const categorizedProjectImageAssets = computed(() => {
+  if (activeImageAssetCategory.value === 'ALL') {
+    return selectableProjectImageAssets.value;
+  }
+  if (activeImageAssetCategory.value === 'SELECTED') {
+    return currentSelectedImageAssets.value;
+  }
+  return selectableProjectImageAssets.value.filter(
+    (asset) => imageAssetCategoryKey(asset) === activeImageAssetCategory.value,
+  );
+});
 
 const sceneGroups = computed<SceneGroup[]>(() => {
   if (!detail.value) return [];
@@ -1081,6 +1706,7 @@ const productionSteps = computed(() => {
     { key: 'dialogue', title: '台词生成', description: '对白、旁白、情绪', done: dialogueReady },
     { key: 'image', title: '图片生成', description: '角色、场景、镜头参考图', done: imageReady },
     { key: 'video', title: '视频生成', description: '镜头级视频任务', done: videoReady },
+    { key: 'draft', title: '剪映初稿', description: '成片预览与素材包', done: Boolean(latestJianyingDraft.value) },
   ];
 });
 
@@ -1106,6 +1732,20 @@ watch(
     activeStepKey.value = productionSteps.value[currentProductionStep.value]?.key || 'novel';
   },
 );
+
+watch(videoPromptText, (value, oldValue) => {
+  if (!videoPromptDialogVisible.value || imageAssetPickerVisible.value) return;
+  if (value === oldValue || !value.endsWith('@')) return;
+  videoPromptReferenceInsertPending.value = true;
+  openImageAssetPicker('VIDEO', 'SELECTED');
+});
+
+watch(imagePromptText, (value, oldValue) => {
+  if (!imagePromptDialogVisible.value || imageAssetPickerVisible.value) return;
+  if (value === oldValue || !value.endsWith('@')) return;
+  imagePromptReferenceInsertPending.value = true;
+  openImageAssetPicker('IMAGE', 'SELECTED');
+});
 
 function isStepCompleted(step: string) {
   return episodeStatusRank.value >= getStepRank(`${step}_READY`);
@@ -1196,6 +1836,29 @@ function openAssetPreview(asset?: DramaAsset) {
   assetPreviewVisible.value = true;
 }
 
+function openVideoPromptViewer(asset?: DramaAsset) {
+  if (!asset) return;
+  videoPromptViewerAsset.value = asset;
+  videoPromptViewerText.value = '';
+  videoPromptViewerTitle.value = '';
+  videoPromptViewerVisible.value = true;
+}
+
+function openImagePromptViewer(asset?: DramaAsset, title = '图片生成提示词') {
+  if (!asset) return;
+  videoPromptViewerAsset.value = asset;
+  videoPromptViewerText.value = '';
+  videoPromptViewerTitle.value = `${title} · ${imageAssetTitle(asset)}`;
+  videoPromptViewerVisible.value = true;
+}
+
+function openShotVideoPromptViewer(shot: DramaShot) {
+  videoPromptViewerAsset.value = undefined;
+  videoPromptViewerText.value = shot.videoPrompt || '';
+  videoPromptViewerTitle.value = `镜头 ${shot.shotNo} · 生成中提示词`;
+  videoPromptViewerVisible.value = true;
+}
+
 function confirmDeletePreviewAsset() {
   if (!previewAsset.value) return;
   confirmDeleteAsset(previewAsset.value);
@@ -1247,6 +1910,13 @@ function imageAssetTitle(asset?: DramaAsset) {
   return asset.assetType || '素材';
 }
 
+function imageAssetCategoryKey(asset: DramaAsset) {
+  if (asset.assetType === 'CHARACTER_IMAGE' || asset.characterId) return 'CHARACTER';
+  if (asset.assetType === 'SCENE_IMAGE' || asset.sceneId) return 'SCENE';
+  if (asset.assetType === 'SHOT_IMAGE' || asset.shotId) return 'SHOT';
+  return 'OTHER';
+}
+
 function buildShotTitle(shot?: { shotNo?: number; shotSize?: string }, fallback = '镜头素材') {
   if (!shot) return fallback;
   return `镜头 ${shot.shotNo || '-'}${shot.shotSize ? ` · ${shot.shotSize}` : ''}`;
@@ -1266,6 +1936,67 @@ function limitPreviewText(value: string, maxLength: number) {
   const text = (value || '').trim();
   if (!text) return '';
   return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function formatReadonlyParameter(value: unknown) {
+  if (value === null || value === undefined || value === '') return '未设置';
+  if (Array.isArray(value)) {
+    return value.length ? value.join('、') : '无';
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value, null, 2);
+  }
+  return String(value);
+}
+
+function _buildChineseParameterEntries(parameters: Record<string, unknown>) {
+  const labelMap: Record<string, string> = {
+    provider: '供应商',
+    endpoint: '接口',
+    model: '模型',
+    prompt: '提示词来源',
+    n: '数量',
+    size: '尺寸',
+    quality: '质量',
+    output_format: '格式',
+    output_compression: '压缩',
+    background: '背景',
+    moderation: '审核',
+    stream: '流式',
+    partial_images: '过程图',
+    reference_asset_ids: '参考图ID',
+    reference_image_count: '参考图数',
+    save_content_type: '保存类型',
+  };
+  const order = [
+    'provider',
+    'endpoint',
+    'model',
+    'size',
+    'quality',
+    'output_format',
+    'output_compression',
+    'reference_image_count',
+    'reference_asset_ids',
+    'background',
+    'moderation',
+    'stream',
+    'partial_images',
+    'save_content_type',
+    'n',
+    'prompt',
+  ];
+  return order
+    .filter((key) => Object.prototype.hasOwnProperty.call(parameters, key))
+    .map((key) => ({
+      label: labelMap[key] || key,
+      value:
+        key === 'reference_image_count'
+          ? String(imagePromptReferences.value.length)
+          : key === 'reference_asset_ids'
+            ? formatReadonlyParameter(imagePromptReferences.value.map((asset) => asset.id))
+            : formatReadonlyParameter(parameters[key]),
+    }));
 }
 
 function imageTaskStageText(task?: DramaTask) {
@@ -1300,6 +2031,7 @@ async function loadDetail(silent = false) {
   }
   try {
     detail.value = await getDramaEpisodeDetail(episodeId.value);
+    latestJianyingDraft.value = await getDramaEpisodeJianyingDraft(episodeId.value);
     scriptForm.value = detail.value.episode.script || '';
   } finally {
     if (!silent) {
@@ -1575,14 +2307,15 @@ async function handleGenerateSingleSceneImage(sceneId: number) {
     return;
   }
   generatingSingleSceneImages.value = { ...generatingSingleSceneImages.value, [sceneId]: true };
+  openImagePromptLoadingDialog('SCENE', sceneId);
   try {
-    await generateDramaSceneImage(sceneId);
-    MessagePlugin.success('已提交场景参考图任务');
-    await loadDetail(true);
-    startImageAutoRefresh();
+    const preview = await getSavedDramaSceneImagePrompt(sceneId);
+    openImagePromptDialog('SCENE', sceneId, preview);
   } catch (error) {
-    MessagePlugin.error(getErrorMessage(error, '场景参考图任务提交失败'));
+    imagePromptLoadError.value = getErrorMessage(error, '场景参考图提示词读取失败');
+    MessagePlugin.error(imagePromptLoadError.value);
   } finally {
+    imagePromptLoading.value = false;
     generatingSingleSceneImages.value = { ...generatingSingleSceneImages.value, [sceneId]: false };
   }
 }
@@ -1598,16 +2331,397 @@ async function handleGenerateSingleShotImage(shotId: number) {
     return;
   }
   generatingSingleShotImages.value = { ...generatingSingleShotImages.value, [shotId]: true };
+  openImagePromptLoadingDialog('SHOT', shotId);
   try {
-    await generateDramaShotImage(shotId);
-    MessagePlugin.success('已提交镜头参考图任务');
+    const preview = await getSavedDramaShotImagePrompt(shotId);
+    openImagePromptDialog('SHOT', shotId, preview);
+  } catch (error) {
+    imagePromptLoadError.value = getErrorMessage(error, '镜头参考图提示词读取失败');
+    MessagePlugin.error(imagePromptLoadError.value);
+  } finally {
+    imagePromptLoading.value = false;
+    generatingSingleShotImages.value = { ...generatingSingleShotImages.value, [shotId]: false };
+  }
+}
+
+function openImagePromptLoadingDialog(type: 'SCENE' | 'SHOT', id: number) {
+  const shot = detail.value?.shots.find((item) => item.id === id);
+  const scene = detail.value?.scenes.find((item) => item.id === id);
+  imagePromptTarget.value = { type, id };
+  imagePromptPreview.value = {
+    targetType: type,
+    targetId: id,
+    assetType: type === 'SCENE' ? 'SCENE_IMAGE' : 'SHOT_IMAGE',
+    assetSubType: type === 'SCENE' ? 'SCENE_REFERENCE' : 'SHOT_REFERENCE',
+    title: type === 'SCENE' ? `场景参考图 · ${scene?.name || '未命名场景'}` : `镜头 ${shot?.shotNo || ''} · 首帧参考图`,
+    prompt: '',
+    parameters: {
+      size: imageSize.value,
+      quality: imageQuality.value,
+      format: imageFormat.value,
+    },
+    referenceImages: [],
+  };
+  imagePromptText.value = '';
+  imagePromptReferences.value = [];
+  imagePromptReferenceInsertPending.value = false;
+  imagePromptLoading.value = true;
+  imagePromptLoadError.value = '';
+  imagePromptDialogVisible.value = true;
+}
+
+function openImagePromptDialog(type: 'SCENE' | 'SHOT', id: number, preview: DramaImagePromptPreview) {
+  imagePromptTarget.value = { type, id };
+  imagePromptPreview.value = preview;
+  imagePromptText.value = preview.prompt || '';
+  imagePromptReferences.value = [...(preview.referenceImages || [])];
+  imagePromptReferenceInsertPending.value = false;
+  imagePromptLoading.value = false;
+  imagePromptLoadError.value = '';
+  imageSize.value = normalizeImageSize(preview.parameters?.size);
+  imageQuality.value = normalizeImageQuality(preview.parameters?.quality);
+  imageFormat.value = normalizeImageFormat(preview.parameters?.format ?? preview.parameters?.output_format);
+  imagePromptDialogVisible.value = true;
+}
+
+async function handleEditSceneImagePrompt(sceneId: number) {
+  await handleGenerateSingleSceneImage(sceneId);
+}
+
+async function handleEditShotImagePrompt(shotId: number) {
+  await handleGenerateSingleShotImage(shotId);
+}
+
+async function handleConfirmImagePrompt() {
+  const target = imagePromptTarget.value;
+  if (!target || !imagePromptPreview.value) return;
+  const prompt = imagePromptText.value.trim();
+  if (!prompt) {
+    MessagePlugin.warning('请先填写图片生成提示词');
+    return;
+  }
+  imagePromptSubmitting.value = true;
+  try {
+    const referenceAssetIds = imagePromptReferences.value.map((asset) => asset.id);
+    if (target.type === 'SCENE') {
+      await generateDramaSceneImage(target.id, prompt, referenceAssetIds, imagePromptParameters());
+      MessagePlugin.success('已提交场景参考图任务');
+    } else {
+      await generateDramaShotImage(target.id, prompt, referenceAssetIds, imagePromptParameters());
+      MessagePlugin.success('已提交镜头参考图任务');
+    }
+    imagePromptDialogVisible.value = false;
+    imagePromptPreview.value = undefined;
+    imagePromptTarget.value = undefined;
+    imagePromptReferences.value = [];
     await loadDetail(true);
     startImageAutoRefresh();
   } catch (error) {
-    MessagePlugin.error(getErrorMessage(error, '镜头参考图任务提交失败'));
+    MessagePlugin.error(
+      getErrorMessage(error, target.type === 'SCENE' ? '场景参考图任务提交失败' : '镜头参考图任务提交失败'),
+    );
   } finally {
-    generatingSingleShotImages.value = { ...generatingSingleShotImages.value, [shotId]: false };
+    imagePromptSubmitting.value = false;
   }
+}
+
+function imagePromptParameters(): DramaImageGenerateParameters {
+  return {
+    imageSize: imageSize.value,
+    imageQuality: imageQuality.value,
+    imageFormat: imageFormat.value,
+  };
+}
+
+function handleImagePromptInput(value: string) {
+  const text = String(value ?? imagePromptText.value);
+  if (!text.endsWith('@')) return;
+  imagePromptReferenceInsertPending.value = true;
+  openImageAssetPicker('IMAGE', 'SELECTED');
+}
+
+async function handleGenerateImagePrompt() {
+  const target = imagePromptTarget.value;
+  if (!target || !imagePromptPreview.value) return;
+  const referenceCount = imagePromptReferences.value.length;
+  const sizeLabel = imageSizeOptions.find((item) => item.value === imageSize.value)?.label || imageSize.value;
+  const qualityLabel =
+    imageQualityOptions.find((item) => item.value === imageQuality.value)?.label || imageQuality.value;
+  const formatLabel = imageFormatOptions.find((item) => item.value === imageFormat.value)?.label || imageFormat.value;
+  const dialog = DialogPlugin.confirm({
+    header: '生成图片提示词',
+    body: `请确认当前参考图 ${referenceCount} 张，图片尺寸 ${sizeLabel}，质量 ${qualityLabel}，格式 ${formatLabel}。如果参考素材或参数有问题，请先调整；确认后将调用大模型生成中文提示词。`,
+    confirmBtn: '确认生成',
+    cancelBtn: '取消',
+    onConfirm: async () => {
+      dialog.hide();
+      imagePromptLoading.value = true;
+      imagePromptLoadError.value = '';
+      try {
+        const referenceAssetIds = imagePromptReferences.value.map((asset) => asset.id);
+        const preview =
+          target.type === 'SCENE'
+            ? await previewDramaSceneImage(target.id, referenceAssetIds, imagePromptParameters())
+            : await previewDramaShotImage(target.id, referenceAssetIds, imagePromptParameters());
+        openImagePromptDialog(target.type, target.id, preview);
+      } catch (error) {
+        imagePromptLoadError.value = getErrorMessage(error, '图片提示词生成失败');
+        MessagePlugin.error(imagePromptLoadError.value);
+      } finally {
+        imagePromptLoading.value = false;
+      }
+    },
+  });
+}
+
+async function openImageAssetPicker(mode: 'IMAGE' | 'VIDEO' = 'IMAGE', category = 'ALL') {
+  imageAssetPickerMode.value = mode;
+  activeImageAssetCategory.value = category;
+  imageAssetPickerVisible.value = true;
+  if (projectImageAssets.value.length) return;
+  loadingProjectImageAssets.value = true;
+  try {
+    projectImageAssets.value = await listDramaSeriesImageAssets(projectId.value);
+    activeImageAssetCategory.value = category;
+  } catch (error) {
+    MessagePlugin.error(getErrorMessage(error, '项目素材加载失败'));
+  } finally {
+    loadingProjectImageAssets.value = false;
+  }
+}
+
+function addProjectImageReference(asset: DramaAsset) {
+  if (imageAssetPickerMode.value === 'VIDEO') {
+    addProjectVideoReference(asset);
+    return;
+  }
+  let nextReferences = imagePromptReferences.value;
+  if (imagePromptReferences.value.some((item) => item.id === asset.id)) {
+    MessagePlugin.warning('该素材已在参考图中');
+  } else {
+    nextReferences = [...imagePromptReferences.value, asset];
+    imagePromptReferences.value = nextReferences;
+  }
+  if (imagePromptReferenceInsertPending.value) {
+    insertImageReferenceToken(asset, nextReferences);
+    imagePromptReferenceInsertPending.value = false;
+  }
+  imageAssetPickerVisible.value = false;
+}
+
+function removeImagePromptReference(assetId: number) {
+  imagePromptReferences.value = imagePromptReferences.value.filter((asset) => asset.id !== assetId);
+}
+
+function insertImageReferenceToken(asset: DramaAsset, references = imagePromptReferences.value) {
+  const index = Math.max(
+    0,
+    references.findIndex((item) => item.id === asset.id),
+  );
+  const token = `@图片${index + 1}`;
+  const text = imagePromptText.value;
+  const atIndex = text.lastIndexOf('@');
+  if (atIndex >= 0) {
+    imagePromptText.value = `${text.slice(0, atIndex)}${token} ${text.slice(atIndex + 1)}`;
+    return;
+  }
+  imagePromptText.value = `${text.trimEnd()} ${token} `.trimStart();
+}
+
+function openVideoPromptDialog(id: number, preview: DramaVideoPromptPreview) {
+  videoPromptTarget.value = { id };
+  videoPromptPreview.value = preview;
+  videoPromptText.value = preview.prompt || '';
+  videoPromptReferences.value = [...(preview.referenceImages || [])];
+  videoPromptReferenceInsertPending.value = false;
+  videoPromptLoading.value = false;
+  videoPromptLoadError.value = '';
+  videoDurationSeconds.value = normalizeVideoDuration(preview.parameters?.durationSeconds);
+  videoResolution.value = normalizeVideoResolution(preview.parameters?.resolution);
+  videoFps.value = normalizeVideoFps(preview.parameters?.fps);
+  videoRatio.value = normalizeVideoRatio(preview.parameters?.ratio);
+  videoPromptDialogVisible.value = true;
+}
+
+function openVideoPromptLoadingDialog(id: number) {
+  const shot = detail.value?.shots.find((item) => item.id === id);
+  const referenceImage = findShotImage(id);
+  videoPromptTarget.value = { id };
+  videoPromptPreview.value = {
+    targetType: 'SHOT',
+    targetId: id,
+    assetType: 'SHOT_VIDEO',
+    assetSubType: 'VIDEO_CLIP',
+    title: `镜头 ${shot?.shotNo || ''} · 视频生成`,
+    prompt: '',
+    parameters: {
+      durationSeconds: normalizeVideoDuration(shot?.durationSeconds),
+      resolution: videoResolution.value,
+      fps: videoFps.value,
+      ratio: videoRatio.value,
+    },
+    referenceImages: referenceImage ? [referenceImage] : [],
+  };
+  videoPromptText.value = '';
+  videoPromptReferences.value = referenceImage ? [referenceImage] : [];
+  videoPromptReferenceInsertPending.value = false;
+  videoPromptLoadError.value = '';
+  videoPromptLoading.value = true;
+  videoDurationSeconds.value = normalizeVideoDuration(shot?.durationSeconds);
+  videoResolution.value = normalizeVideoResolution(videoResolution.value);
+  videoFps.value = normalizeVideoFps(videoFps.value);
+  videoRatio.value = normalizeVideoRatio(videoRatio.value);
+  videoPromptDialogVisible.value = true;
+}
+
+function videoPromptParameters(): DramaVideoGenerateParameters {
+  return {
+    durationSeconds: videoDurationSeconds.value,
+    resolution: videoResolution.value,
+    fps: videoFps.value,
+    ratio: videoRatio.value,
+  };
+}
+
+function handleVideoPromptInput(value: string) {
+  const text = String(value ?? videoPromptText.value);
+  if (!text.endsWith('@')) return;
+  videoPromptReferenceInsertPending.value = true;
+  openImageAssetPicker('VIDEO', 'SELECTED');
+}
+
+async function handleGenerateVideoPrompt() {
+  const target = videoPromptTarget.value;
+  if (!target || !videoPromptPreview.value) return;
+  const referenceCount = videoPromptReferences.value.length;
+  const dialog = DialogPlugin.confirm({
+    header: '生成视频提示词',
+    body: `请确认当前参考图 ${referenceCount} 张，视频时长 ${videoDurationSeconds.value} 秒，质量 ${videoResolution.value}，帧数 ${videoFps.value}fps，画面比例 ${videoRatio.value}。确认后将调用多模态模型生成提示词。`,
+    confirmBtn: '确认生成',
+    cancelBtn: '取消',
+    onConfirm: async () => {
+      dialog.hide();
+      videoPromptLoading.value = true;
+      videoPromptLoadError.value = '';
+      try {
+        const referenceAssetIds = videoPromptReferences.value.map((asset) => asset.id);
+        const preview = await previewDramaShotVideo(target.id, referenceAssetIds, videoPromptParameters());
+        openVideoPromptDialog(target.id, preview);
+      } catch (error) {
+        videoPromptLoadError.value = getErrorMessage(error, '视频提示词生成失败');
+        MessagePlugin.error(videoPromptLoadError.value);
+      } finally {
+        videoPromptLoading.value = false;
+      }
+    },
+  });
+}
+
+async function handleSaveVideoPrompt() {
+  const target = videoPromptTarget.value;
+  if (!target || !videoPromptPreview.value) return;
+  const prompt = withVideoDurationLock(videoPromptText.value.trim(), videoDurationSeconds.value);
+  if (!prompt) {
+    MessagePlugin.warning('请先填写视频生成提示词');
+    return;
+  }
+  videoPromptSubmitting.value = true;
+  try {
+    const referenceAssetIds = videoPromptReferences.value.map((asset) => asset.id);
+    await saveDramaShotVideoPrompt(target.id, prompt, referenceAssetIds, videoPromptParameters());
+    MessagePlugin.success('已保存视频提示词');
+    videoPromptDialogVisible.value = false;
+    videoPromptPreview.value = undefined;
+    videoPromptTarget.value = undefined;
+    videoPromptReferences.value = [];
+    await loadDetail(true);
+  } catch (error) {
+    MessagePlugin.error(getErrorMessage(error, '视频提示词保存失败'));
+  } finally {
+    videoPromptSubmitting.value = false;
+  }
+}
+
+function addProjectVideoReference(asset: DramaAsset) {
+  let nextReferences = videoPromptReferences.value;
+  if (!nextReferences.some((item) => item.id === asset.id)) {
+    nextReferences = [...nextReferences, asset];
+    videoPromptReferences.value = nextReferences;
+  }
+  if (videoPromptReferenceInsertPending.value) {
+    insertVideoReferenceToken(asset, nextReferences);
+    videoPromptReferenceInsertPending.value = false;
+  }
+  imageAssetPickerVisible.value = false;
+}
+
+function removeVideoPromptReference(assetId: number) {
+  videoPromptReferences.value = videoPromptReferences.value.filter((asset) => asset.id !== assetId);
+}
+
+function insertVideoReferenceToken(asset: DramaAsset, references = videoPromptReferences.value) {
+  const index = Math.max(
+    0,
+    references.findIndex((item) => item.id === asset.id),
+  );
+  const token = `@图片${index + 1}`;
+  const text = videoPromptText.value;
+  const atIndex = text.lastIndexOf('@');
+  if (atIndex >= 0) {
+    videoPromptText.value = `${text.slice(0, atIndex)}${token} ${text.slice(atIndex + 1)}`;
+    return;
+  }
+  videoPromptText.value = `${text.trimEnd()} ${token} `.trimStart();
+}
+
+function normalizeVideoDuration(value: unknown) {
+  const duration = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(duration) || duration <= 0) return 10;
+  return Math.max(9, Math.min(Math.round(duration), 12));
+}
+
+function withVideoDurationLock(prompt: string, durationSeconds: number) {
+  const seconds = normalizeVideoDuration(durationSeconds);
+  const cleaned = prompt.replace(/\n*【视频时长硬性要求】[\s\S]*$/u, '').trim();
+  if (!cleaned) return '';
+  return `${cleaned}
+
+【视频时长硬性要求】
+总时长必须严格为 ${seconds} 秒；所有逐时间段镜头调度必须从 0.0 秒连续覆盖到 ${seconds}.0 秒。若上文存在任何 5 秒、9 秒或其他不等于 ${seconds} 秒的旧时间段，提交生成时必须全部改写为 ${seconds} 秒版本。`;
+}
+
+function normalizeVideoResolution(value: unknown) {
+  const resolution = String(value || '').trim();
+  return videoResolutionOptions.some((item) => item.value === resolution) ? resolution : '720p';
+}
+
+function normalizeVideoFps(value: unknown) {
+  const fps = typeof value === 'number' ? value : Number(value);
+  return videoFpsOptions.some((item) => item.value === fps) ? fps : 24;
+}
+
+function normalizeVideoRatio(value: unknown) {
+  const ratio = String(value || '').trim();
+  return videoRatioOptions.some((item) => item.value === ratio) ? ratio : '9:16';
+}
+
+function normalizeImageSize(value: unknown) {
+  const size = String(value || '').trim();
+  return imageSizeOptions.some((item) => item.value === size) ? size : '1024x1536';
+}
+
+function normalizeImageQuality(value: unknown) {
+  const quality = String(value || '')
+    .trim()
+    .toLowerCase();
+  return imageQualityOptions.some((item) => item.value === quality) ? quality : 'low';
+}
+
+function normalizeImageFormat(value: unknown) {
+  const format = String(value || '')
+    .trim()
+    .toLowerCase();
+  return imageFormatOptions.some((item) => item.value === format) ? format : 'jpeg';
 }
 
 async function handleGenerateShotVideos() {
@@ -1632,8 +2746,48 @@ async function handleGenerateShotVideos() {
   }
 }
 
+async function handleGenerateJianyingDraft() {
+  if (!isStepCompleted('VIDEO')) {
+    MessagePlugin.warning('请先完成视频步骤');
+    return;
+  }
+  if (activeJianyingDraftTask.value) {
+    MessagePlugin.warning('剪映初稿正在生成中');
+    return;
+  }
+  generatingJianyingDraft.value = true;
+  try {
+    await generateDramaEpisodeJianyingDraft(episodeId.value);
+    MessagePlugin.success('已提交剪映初稿生成任务');
+    activeStepKey.value = 'draft';
+    await loadDetail(true);
+    startImageAutoRefresh();
+  } catch (error) {
+    MessagePlugin.error(getErrorMessage(error, '剪映初稿任务提交失败'));
+  } finally {
+    generatingJianyingDraft.value = false;
+  }
+}
+
+function buildAuthenticatedFileUrl(url?: string | null) {
+  if (!url) return '';
+  const token = userStore.token;
+  if (!token) return url;
+  const joiner = url.includes('?') ? '&' : '?';
+  return `${url}${joiner}token=${encodeURIComponent(token)}`;
+}
+
+function downloadJianyingPackage() {
+  const packageId = latestJianyingDraft.value?.id;
+  if (!packageId) return;
+  const url = buildAuthenticatedFileUrl(latestJianyingDraft.value?.packageDownloadUrl);
+  if (!url) return;
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 async function handleGenerateSingleShotVideo(shotId: number) {
   if (!shotId) return;
+  const shot = detail.value?.shots.find((item) => item.id === shotId);
   if (!findShotImage(shotId)) {
     MessagePlugin.warning('请先生成该镜头的首帧图');
     return;
@@ -1646,9 +2800,26 @@ async function handleGenerateSingleShotVideo(shotId: number) {
     MessagePlugin.warning('该镜头视频正在生成中');
     return;
   }
+  const prompt = shot?.videoPrompt?.trim();
+  if (!prompt) {
+    MessagePlugin.warning('请先点击“编辑提示词”，保存视频提示词后再生成视频');
+    return;
+  }
+  const durationSeconds = normalizeVideoDuration(shot?.durationSeconds);
   generatingSingleShotVideos.value = { ...generatingSingleShotVideos.value, [shotId]: true };
   try {
-    await generateDramaShotVideo(shotId);
+    const referenceAssetId = findShotImage(shotId)?.id;
+    await generateDramaShotVideo(
+      shotId,
+      withVideoDurationLock(prompt, durationSeconds),
+      referenceAssetId ? [referenceAssetId] : undefined,
+      {
+        durationSeconds,
+        resolution: videoResolution.value,
+        fps: videoFps.value,
+        ratio: videoRatio.value,
+      },
+    );
     MessagePlugin.success('已提交镜头视频任务');
     await loadDetail(true);
     startImageAutoRefresh();
@@ -1659,6 +2830,23 @@ async function handleGenerateSingleShotVideo(shotId: number) {
   }
 }
 
+async function handleEditShotVideoPrompt(shotId: number) {
+  if (!shotId) return;
+  if (!findShotImage(shotId)) {
+    MessagePlugin.warning('请先生成该镜头的首帧图');
+    return;
+  }
+  openVideoPromptLoadingDialog(shotId);
+  try {
+    const preview = await getSavedDramaShotVideoPrompt(shotId);
+    openVideoPromptDialog(shotId, preview);
+  } catch (error) {
+    const message = getErrorMessage(error, '视频提示词加载失败');
+    videoPromptLoading.value = false;
+    videoPromptLoadError.value = message;
+    MessagePlugin.error(message);
+  }
+}
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -1735,7 +2923,9 @@ onMounted(async () => {
     startImageAutoRefresh();
   }
 });
-onUnmounted(stopImageAutoRefresh);
+onUnmounted(() => {
+  stopImageAutoRefresh();
+});
 </script>
 <style scoped lang="less">
 .episode-page {
@@ -2495,6 +3685,11 @@ onUnmounted(stopImageAutoRefresh);
     transform: translateY(0);
   }
 
+  &.has-image:hover .video-prompt-button {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
   img,
   video,
   .asset-placeholder {
@@ -2600,6 +3795,39 @@ onUnmounted(stopImageAutoRefresh);
   }
 }
 
+.video-prompt-button {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
+  padding: 5px 10px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  background: rgb(0 82 217 / 92%);
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 10px 22px rgb(0 82 217 / 22%);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #003cab;
+  }
+
+  &.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+}
+
 .asset-card.is-generating {
   border-color: rgb(0 82 217 / 22%);
   box-shadow: 0 18px 36px rgb(0 82 217 / 12%);
@@ -2700,6 +3928,13 @@ onUnmounted(stopImageAutoRefresh);
   &:disabled {
     cursor: not-allowed;
     opacity: 0.58;
+  }
+
+  &.secondary {
+    color: #0052d9;
+    background: rgb(255 255 255 / 92%);
+    border: 1px solid rgb(0 82 217 / 24%);
+    box-shadow: 0 8px 18px rgb(0 82 217 / 12%);
   }
 }
 
@@ -2838,6 +4073,457 @@ onUnmounted(stopImageAutoRefresh);
   }
 }
 
+.image-prompt-dialog-title {
+  display: grid;
+  gap: 3px;
+
+  span {
+    color: #6b7890;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  strong {
+    color: #1d2433;
+    font-size: 18px;
+    line-height: 1.35;
+  }
+}
+
+.image-prompt-dialog {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 12px;
+  height: min(78vh, 760px);
+  overflow: hidden;
+}
+
+.image-prompt-reference-zone {
+  display: block;
+  position: relative;
+  min-height: 88px;
+  padding: 12px 14px;
+  overflow: visible;
+  background:
+    radial-gradient(circle at 96% 8%, rgb(20 184 166 / 10%) 0, transparent 34%),
+    linear-gradient(135deg, rgb(248 251 255 / 98%) 0%, rgb(236 245 255 / 94%) 100%);
+  border: 1px solid #e4edf8;
+  border-radius: 18px;
+}
+
+.image-prompt-reference-strip {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  overflow: visible;
+}
+
+.image-prompt-reference-thumb {
+  position: relative;
+  width: 82px;
+  height: 82px;
+  padding: 6px;
+  color: #526071;
+  background: rgb(255 255 255 / 76%);
+  border: 1px solid #e1eaf8;
+  border-radius: 12px;
+
+  img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 9px;
+  }
+}
+
+.image-prompt-reference-remove {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  background: rgb(17 24 39 / 86%);
+  border: 1px solid rgb(255 255 255 / 88%);
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+  transform: scale(0.86);
+}
+
+.image-prompt-reference-thumb:hover .image-prompt-reference-remove {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.video-reference-token {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  max-width: calc(100% - 14px);
+  padding: 3px 6px;
+  overflow: hidden;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: rgb(0 82 217 / 86%);
+  border: 1px solid rgb(255 255 255 / 72%);
+  border-radius: 7px;
+}
+
+.image-prompt-reference-upload {
+  display: grid;
+  place-items: center;
+  width: 82px;
+  min-width: 82px;
+  height: 82px;
+  color: #0052d9;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  background: rgb(255 255 255 / 72%);
+  border: 1px dashed rgb(0 82 217 / 35%);
+  border-radius: 12px;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: wait;
+    opacity: 0.62;
+  }
+}
+
+.image-prompt-reference-popover {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 0;
+  z-index: 20;
+  display: none;
+  width: 360px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #dce7f7;
+  border-radius: 16px;
+  box-shadow: 0 22px 56px rgb(31 45 74 / 24%);
+
+  img {
+    width: 100%;
+    aspect-ratio: auto;
+    max-height: 430px;
+    object-fit: contain;
+    background: #f8fbff;
+    border-radius: 12px;
+  }
+}
+
+.image-prompt-reference-thumb:hover {
+  z-index: 21;
+  border-color: rgb(0 82 217 / 42%);
+
+  .image-prompt-reference-popover {
+    display: block;
+  }
+}
+
+.image-prompt-param-zone {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 86px;
+  padding: 10px 12px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #e8eef8;
+  border-radius: 16px;
+}
+
+.video-spec-panel,
+.image-spec-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: linear-gradient(180deg, #fbfdff 0%, #f5f8fc 100%);
+  border: 1px solid #e4edf8;
+  border-radius: 16px;
+}
+
+.video-spec-panel {
+  grid-template-columns: minmax(148px, 0.8fr) repeat(3, minmax(190px, 1fr));
+}
+
+.image-spec-panel {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.video-spec-field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #edf2fb;
+  border-radius: 12px;
+
+  > span {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 800;
+  }
+}
+
+.video-duration-control,
+.video-segmented-control {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 6px;
+  align-items: center;
+}
+
+.video-duration-control {
+  grid-template-columns: 34px minmax(58px, 1fr) 34px;
+
+  strong {
+    display: grid;
+    place-items: center;
+    min-height: 34px;
+    color: #1f2a44;
+    font-size: 14px;
+    line-height: 1;
+    background: #f7faff;
+    border: 1px solid #e5edf8;
+    border-radius: 9px;
+  }
+}
+
+.video-duration-control button,
+.video-segmented-control button {
+  min-height: 34px;
+  padding: 0 10px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+  background: #f8fbff;
+  border: 1px solid #e1eaf8;
+  border-radius: 9px;
+  cursor: pointer;
+  transition:
+    color 0.16s ease,
+    background 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+
+  &:hover:not(:disabled) {
+    color: #0052d9;
+    border-color: rgb(0 82 217 / 28%);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  &.is-active {
+    color: #fff;
+    background: #0052d9;
+    border-color: #0052d9;
+    box-shadow: 0 8px 18px rgb(0 82 217 / 18%);
+  }
+}
+
+.image-prompt-body {
+  display: block;
+  min-height: 0;
+}
+
+.image-prompt-editor {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e8eef8;
+  border-radius: 18px;
+  box-shadow: 0 16px 34px rgb(31 45 74 / 6%);
+}
+
+.image-prompt-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+
+  strong,
+  span {
+    display: block;
+  }
+
+  strong {
+    color: #24324b;
+    font-size: 15px;
+  }
+
+  span {
+    margin-top: 5px;
+    color: #7b8497;
+    font-size: 12px;
+    font-weight: 700;
+  }
+}
+
+.image-prompt-section-head.compact {
+  margin-top: 16px;
+  margin-bottom: 10px;
+}
+
+.image-prompt-textarea {
+  flex: 1;
+  min-height: 0;
+}
+
+.image-prompt-textarea :deep(.t-textarea__inner) {
+  height: 100% !important;
+  color: #25324a;
+  line-height: 1.8;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 92%) 0%, rgb(247 250 255 / 92%) 100%),
+    repeating-linear-gradient(0deg, transparent 0 31px, rgb(184 205 253 / 16%) 32px);
+  border-color: #dce7f7;
+  border-radius: 14px;
+}
+
+.video-prompt-load-error {
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: #b3261e;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.7;
+  text-align: center;
+  background: #fff7f6;
+  border: 1px solid #ffd8d3;
+  border-radius: 14px;
+}
+
+.image-prompt-param-tag {
+  display: inline-grid;
+  grid-template-columns: 1fr;
+  max-width: 100%;
+  padding: 8px 10px;
+  background: #f4f8ff;
+  border: 1px solid #edf2fb;
+  border-radius: 999px;
+
+  span {
+    color: #6b7890;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  code {
+    overflow-wrap: anywhere;
+    color: #24324b;
+    font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+    font-size: 11px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+  }
+}
+
+.image-prompt-reference-empty {
+  display: grid;
+  place-items: center;
+  min-width: 150px;
+  padding: 14px 18px;
+  color: #7b8497;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  background: #f8fbff;
+  border: 1px dashed #dce7f7;
+  border-radius: 12px;
+}
+
+.image-prompt-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.image-asset-picker {
+  min-height: 360px;
+}
+
+.image-asset-picker-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.image-asset-category {
+  padding: 8px 13px;
+  color: #526071;
+  font-size: 13px;
+  font-weight: 800;
+  background: #f4f8ff;
+  border: 1px solid #e1eaf8;
+  border-radius: 999px;
+  cursor: pointer;
+
+  &.is-active {
+    color: #0052d9;
+    background: #eaf3ff;
+    border-color: rgb(0 82 217 / 32%);
+  }
+}
+
+.image-asset-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
+  gap: 12px;
+  max-height: 62vh;
+  overflow: auto;
+}
+
+.image-asset-picker-item {
+  padding: 8px;
+  background: #f8fbff;
+  border: 1px solid #e1eaf8;
+  border-radius: 12px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: rgb(0 82 217 / 42%);
+    box-shadow: 0 10px 26px rgb(31 45 74 / 10%);
+  }
+
+  img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 8px;
+  }
+}
+
 .asset-preview-dialog {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
@@ -2890,6 +4576,49 @@ onUnmounted(stopImageAutoRefresh);
     color: #0052d9;
     font-size: 12px;
   }
+}
+
+.video-prompt-viewer {
+  display: grid;
+  gap: 14px;
+}
+
+.video-prompt-viewer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 700;
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    flex: 0 0 auto;
+    color: #0052d9;
+  }
+}
+
+.video-prompt-viewer pre {
+  max-height: 68vh;
+  margin: 0;
+  padding: 18px 20px;
+  overflow: auto;
+  color: #25324a;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #f8fbff;
+  border: 1px solid #dce7f7;
+  border-radius: 14px;
 }
 
 .asset-preview-large {
@@ -2973,12 +4702,97 @@ onUnmounted(stopImageAutoRefresh);
   padding-top: 18px;
 }
 
+.draft-workbench {
+  display: grid;
+  gap: 18px;
+}
+
+.draft-status {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+
+  strong {
+    display: block;
+    margin-bottom: 4px;
+    color: #111827;
+  }
+
+  span {
+    color: #667085;
+  }
+}
+
+.draft-result {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.1fr) minmax(280px, 0.9fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.draft-preview {
+  min-height: 320px;
+  overflow: hidden;
+  background: #0b1020;
+  border-radius: 8px;
+
+  video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 320px;
+    object-fit: contain;
+  }
+}
+
+.draft-files {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+
+  strong {
+    color: #111827;
+    font-size: 16px;
+  }
+
+  span,
+  li {
+    color: #667085;
+    font-size: 12px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+  }
+
+  ul {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding-left: 18px;
+  }
+}
+
 @media (width <= 1180px) {
   .workspace-header,
   .outline-workbench,
   .outline-storyline,
   .image-columns {
     grid-template-columns: 1fr;
+  }
+
+  .image-prompt-body {
+    grid-template-columns: 1fr;
+  }
+
+  .video-spec-panel,
+  .image-spec-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .outline-sidebar {
@@ -3016,6 +4830,19 @@ onUnmounted(stopImageAutoRefresh);
   }
 
   .asset-preview-dialog {
+    grid-template-columns: 1fr;
+  }
+
+  .image-prompt-footer {
+    display: grid;
+  }
+
+  .video-spec-panel,
+  .image-spec-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .draft-result {
     grid-template-columns: 1fr;
   }
 

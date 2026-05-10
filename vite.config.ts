@@ -11,6 +11,14 @@ const CWD = process.cwd();
 
 export default ({ mode }: ConfigEnv): UserConfig => {
   const { VITE_BASE_URL } = loadEnv(mode, CWD);
+  const proxy = {
+    '/api': {
+      target: 'http://localhost:10080',
+      changeOrigin: true,
+      ws: true,
+    },
+  };
+
   return {
     base: VITE_BASE_URL,
     resolve: {
@@ -42,13 +50,16 @@ export default ({ mode }: ConfigEnv): UserConfig => {
     ],
 
     server: {
-      proxy: {
-        '/api': {
-          target: 'http://localhost:10080',
-          changeOrigin: true,
-          ws: true,
-        },
-      },
+      host: '0.0.0.0',
+      port: 5173,
+      allowedHosts: ['t2eff2cf.natappfree.cc'],
+      proxy,
+    },
+    preview: {
+      host: '0.0.0.0',
+      port: 5173,
+      allowedHosts: ['t2eff2cf.natappfree.cc'],
+      proxy,
     },
   };
 };

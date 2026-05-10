@@ -95,6 +95,61 @@
                 <p>{{ character.relationship || '待补充' }}</p>
               </div>
             </div>
+            <div class="voice-config">
+              <div class="voice-config-head">
+                <div>
+                  <h3>角色音色</h3>
+                  <span>{{ voiceTypeLabel(character.voiceProfileType) }}</span>
+                </div>
+                <t-tag theme="primary" variant="light">{{ voiceStatusText }}</t-tag>
+              </div>
+              <div class="voice-type-tabs">
+                <button
+                  v-for="item in voiceTypeOptions"
+                  :key="item.value"
+                  type="button"
+                  :class="{ active: voiceForm.voiceProfileType === item.value }"
+                  @click="switchVoiceType(item.value)"
+                >
+                  {{ item.label }}
+                </button>
+              </div>
+              <t-textarea
+                v-if="voiceForm.voiceProfileType === 'PROMPT'"
+                v-model="voiceForm.voiceProfile"
+                class="voice-input"
+                :autosize="{ minRows: 4, maxRows: 6 }"
+                placeholder="标签：清冷、克制、低语感；描述：声线、语速、情绪质感和适合的对白场景"
+              />
+              <t-input
+                v-else-if="voiceForm.voiceProfileType === 'VOICE_ID'"
+                v-model="voiceForm.voiceProfile"
+                class="voice-input"
+                placeholder="请输入平台或模型侧的音色 ID"
+              />
+              <div v-else class="voice-file-panel">
+                <div class="voice-file-main">
+                  <strong>{{ voiceSampleAsset ? voiceSampleAsset.fileName : '未绑定音频样例' }}</strong>
+                  <span>{{ voiceSampleAsset ? `素材 #${voiceSampleAsset.id}` : '上传后会自动保存素材 ID' }}</span>
+                </div>
+                <audio v-if="voiceSampleAsset" :src="voiceSampleAsset.accessUrl" controls />
+                <input
+                  ref="voiceFileInput"
+                  class="voice-file-input"
+                  type="file"
+                  accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"
+                  @change="handleVoiceFileChange"
+                />
+                <t-button variant="outline" :loading="uploadingVoiceSample" @click="triggerVoiceFileSelect">
+                  {{ voiceSampleAsset ? '更换音频' : '上传音频' }}
+                </t-button>
+              </div>
+              <div v-if="voiceForm.voiceProfileType !== 'AUDIO_ASSET_ID'" class="voice-actions">
+                <t-button theme="primary" :loading="savingVoiceProfile" @click="handleSaveVoiceProfile">
+                  保存音色
+                </t-button>
+              </div>
+            </div>
           </article>
 
           <article class="panel image-panel">
@@ -284,6 +339,7 @@ import {
   getDramaTask,
   listDramaCharacterAssets,
   updateDramaCharacter,
+  uploadDramaCharacterVoiceSample,
 } from '@/api/modules/ai/drama';
 import type { DramaAsset, DramaCharacter, DramaCharacterCreateRequest, DramaTask } from '@/types/modules/ai/drama';
 
@@ -294,12 +350,15 @@ const generatingPortrait = ref(false);
 const generatingAuxiliary = ref(false);
 const editVisible = ref(false);
 const savingCharacter = ref(false);
+const savingVoiceProfile = ref(false);
+const uploadingVoiceSample = ref(false);
 const assetPreviewVisible = ref(false);
 const character = ref<DramaCharacter>();
 const assets = ref<DramaAsset[]>([]);
 const imageTasks = ref<DramaTask[]>([]);
 const selectedAuxiliaryType = ref('');
 const previewAsset = ref<DramaAsset>();
+const voiceFileInput = ref<HTMLInputElement>();
 let pollingTimer: number | undefined;
 
 const editForm = ref<DramaCharacterCreateRequest>({
@@ -310,6 +369,19 @@ const editForm = ref<DramaCharacterCreateRequest>({
   personality: '',
   relationship: '',
 });
+
+const voiceForm = ref<Pick<DramaCharacterCreateRequest, 'voiceProfileType' | 'voiceProfile'>>({
+  voiceProfileType: 'PROMPT',
+  voiceProfile: '',
+});
+
+type VoiceProfileType = NonNullable<DramaCharacterCreateRequest['voiceProfileType']>;
+
+const voiceTypeOptions: Array<{ value: VoiceProfileType; label: string }> = [
+  { value: 'PROMPT', label: '提示词' },
+  { value: 'VOICE_ID', label: '音色 ID' },
+  { value: 'AUDIO_ASSET_ID', label: '音频样例' },
+];
 
 const auxiliaryImageTypes = [
   { value: 'AVATAR', label: '头像' },
@@ -349,6 +421,20 @@ const auxiliaryAssets = computed(() =>
   assets.value.filter((item) => item.assetSubType && item.assetSubType !== 'PORTRAIT'),
 );
 
+const voiceSampleAsset = computed(() => {
+  if (voiceForm.value.voiceProfileType !== 'AUDIO_ASSET_ID') return undefined;
+  const assetId = Number(voiceForm.value.voiceProfile);
+  if (!Number.isFinite(assetId) || assetId <= 0) return undefined;
+  return assets.value.find((item) => item.id === assetId);
+});
+
+const voiceStatusText = computed(() => {
+  if (voiceForm.value.voiceProfileType === 'AUDIO_ASSET_ID') {
+    return voiceSampleAsset.value ? `素材 #${voiceSampleAsset.value.id}` : '待上传';
+  }
+  return voiceForm.value.voiceProfile?.trim() ? '已配置' : '待配置';
+});
+
 const filteredAuxiliaryAssets = computed(() => {
   if (!selectedAuxiliaryType.value) return auxiliaryAssets.value;
   return auxiliaryAssets.value.filter((item) => item.assetSubType === selectedAuxiliaryType.value);
@@ -379,6 +465,7 @@ async function refreshAssets() {
   ]);
   character.value = characterDetail;
   assets.value = characterAssets;
+  syncVoiceForm(characterDetail);
 }
 
 async function handleGeneratePortrait() {
@@ -421,15 +508,106 @@ async function handleSaveCharacter() {
   try {
     const updated = await updateDramaCharacter(projectId.value, characterId.value, {
       ...editForm.value,
+      voiceProfileType: character.value?.voiceProfileType || 'PROMPT',
+      voiceProfile: character.value?.voiceProfile || '',
       name: editForm.value.name.trim(),
     });
     character.value = updated;
+    syncVoiceForm(updated);
     editVisible.value = false;
     MessagePlugin.success('角色资料已保存');
   } catch (error: any) {
     MessagePlugin.error(error?.message || '角色资料保存失败');
   } finally {
     savingCharacter.value = false;
+  }
+}
+
+function syncVoiceForm(source?: DramaCharacter) {
+  voiceForm.value = {
+    voiceProfileType: normalizeVoiceType(source?.voiceProfileType),
+    voiceProfile: source?.voiceProfile || '',
+  };
+}
+
+function normalizeVoiceType(value?: string): VoiceProfileType {
+  if (value === 'VOICE_ID' || value === 'AUDIO_ASSET_ID' || value === 'PROMPT') {
+    return value;
+  }
+  return 'PROMPT';
+}
+
+function voiceTypeLabel(value?: string) {
+  const normalized = normalizeVoiceType(value);
+  return voiceTypeOptions.find((item) => item.value === normalized)?.label || '提示词';
+}
+
+function switchVoiceType(value: VoiceProfileType) {
+  voiceForm.value.voiceProfileType = value;
+  if (value === 'AUDIO_ASSET_ID' && !Number(voiceForm.value.voiceProfile)) {
+    voiceForm.value.voiceProfile = '';
+  }
+}
+
+async function handleSaveVoiceProfile() {
+  if (!character.value) return;
+  if (voiceForm.value.voiceProfileType === 'VOICE_ID' && !voiceForm.value.voiceProfile?.trim()) {
+    MessagePlugin.warning('请填写音色 ID');
+    return;
+  }
+  if (voiceForm.value.voiceProfileType === 'PROMPT' && !voiceForm.value.voiceProfile?.trim()) {
+    MessagePlugin.warning('请填写音色提示词');
+    return;
+  }
+  savingVoiceProfile.value = true;
+  try {
+    const updated = await updateDramaCharacter(projectId.value, characterId.value, {
+      name: character.value.name,
+      profile: character.value.profile,
+      appearance: character.value.appearance,
+      costume: character.value.costume,
+      personality: character.value.personality,
+      relationship: character.value.relationship,
+      voiceProfileType: voiceForm.value.voiceProfileType,
+      voiceProfile: voiceForm.value.voiceProfile?.trim() || '',
+    });
+    character.value = updated;
+    syncVoiceForm(updated);
+    MessagePlugin.success('角色音色已保存');
+  } finally {
+    savingVoiceProfile.value = false;
+  }
+}
+
+function triggerVoiceFileSelect() {
+  voiceFileInput.value?.click();
+}
+
+async function handleVoiceFileChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  uploadingVoiceSample.value = true;
+  try {
+    const asset = await uploadDramaCharacterVoiceSample(projectId.value, characterId.value, file);
+    await refreshAssets();
+    voiceForm.value = {
+      voiceProfileType: 'AUDIO_ASSET_ID',
+      voiceProfile: String(asset.id),
+    };
+    if (character.value) {
+      character.value = {
+        ...character.value,
+        voiceProfileType: 'AUDIO_ASSET_ID',
+        voiceProfile: String(asset.id),
+      };
+    }
+    MessagePlugin.success('音频样例已上传并绑定');
+  } catch (error: any) {
+    MessagePlugin.error(error?.message || '音频样例上传失败');
+  } finally {
+    uploadingVoiceSample.value = false;
   }
 }
 
@@ -820,7 +998,7 @@ onBeforeUnmount(stopPollingTasks);
 .info-list {
   display: grid;
   gap: 10px;
-  flex: 1;
+  flex: 0 0 auto;
   min-height: 0;
   overflow: auto;
   padding-right: 4px;
@@ -847,6 +1025,98 @@ onBeforeUnmount(stopPollingTasks);
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
   }
+}
+
+.voice-config {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  background: linear-gradient(135deg, rgb(0 82 217 / 8%), rgb(255 255 255 / 0%) 42%), #fbfcff;
+  border: 1px solid #e7edf8;
+  border-radius: 18px;
+}
+
+.voice-config-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+
+  h3 {
+    margin: 0 0 4px;
+    color: #27314a;
+    font-size: 16px;
+  }
+
+  span {
+    color: #8a90a2;
+    font-size: 13px;
+  }
+}
+
+.voice-type-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 4px;
+  background: #f2f5fb;
+  border-radius: 12px;
+
+  button {
+    height: 34px;
+    color: #667085;
+    font-weight: 700;
+    background: transparent;
+    border: 0;
+    border-radius: 9px;
+    cursor: pointer;
+  }
+
+  button.active {
+    color: #0052d9;
+    background: #fff;
+    box-shadow: 0 6px 16px rgb(34 38 64 / 8%);
+  }
+}
+
+.voice-input {
+  width: 100%;
+}
+
+.voice-file-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: #fff;
+  border: 1px dashed #cfd9ea;
+  border-radius: 14px;
+
+  audio {
+    width: 100%;
+  }
+}
+
+.voice-file-main {
+  display: grid;
+  gap: 4px;
+
+  strong {
+    color: #27314a;
+  }
+
+  span {
+    color: #8a90a2;
+    font-size: 13px;
+  }
+}
+
+.voice-file-input {
+  display: none;
+}
+
+.voice-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .image-panel {

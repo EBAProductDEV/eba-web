@@ -5,6 +5,9 @@ import type {
   DramaCharacterCreateRequest,
   DramaEpisodeDetail,
   DramaEpisodeScriptSaveRequest,
+  DramaImageGenerateParameters,
+  DramaImagePromptPreview,
+  DramaJianyingDraft,
   DramaSeriesCreateRequest,
   DramaSeriesDetail,
   DramaSeriesSummary,
@@ -16,12 +19,21 @@ import type {
   DramaStorySaveRequest,
   DramaTask,
   DramaTaskCenter,
+  DramaVideoGenerateParameters,
+  DramaVideoPromptPreview,
 } from '@/types/modules/ai/drama';
 import { request } from '@/utils/request';
 
 export function createDramaSeries(data: DramaSeriesCreateRequest) {
   return request.post<DramaSeriesSummary>({
     url: '/ai/drama/series',
+    data,
+  });
+}
+
+export function updateDramaSeries(id: number, data: DramaSeriesCreateRequest) {
+  return request.put<DramaSeriesSummary>({
+    url: `/ai/drama/series/${id}`,
     data,
   });
 }
@@ -35,6 +47,12 @@ export function listDramaSeries() {
 export function getDramaSeriesDetail(id: number) {
   return request.get<DramaSeriesDetail>({
     url: `/ai/drama/series/${id}`,
+  });
+}
+
+export function listDramaSeriesImageAssets(id: number) {
+  return request.get<DramaAsset[]>({
+    url: `/ai/drama/series/${id}/assets/images`,
   });
 }
 
@@ -94,6 +112,17 @@ export function deleteDramaCharacter(seriesId: number, characterId: number) {
 export function listDramaCharacterAssets(seriesId: number, characterId: number) {
   return request.get<DramaAsset[]>({
     url: `/ai/drama/series/${seriesId}/characters/${characterId}/assets`,
+  });
+}
+
+export function uploadDramaCharacterVoiceSample(seriesId: number, characterId: number, file: File) {
+  const data = new FormData();
+  data.append('file', file);
+  return request.post<DramaAsset>({
+    url: `/ai/drama/series/${seriesId}/characters/${characterId}/voice/sample`,
+    data,
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
   });
 }
 
@@ -344,26 +373,150 @@ export function generateDramaEpisodeShotVideos(episodeId: number) {
   });
 }
 
-export function generateDramaSceneImage(sceneId: number) {
+export function generateDramaEpisodeJianyingDraft(episodeId: number) {
+  return request.post<DramaTask>({
+    url: `/ai/drama/episodes/${episodeId}/jianying-draft/generate`,
+    data: {},
+    timeout: 120000,
+  });
+}
+
+export function getDramaEpisodeJianyingDraft(episodeId: number) {
+  return request.get<DramaJianyingDraft | null>({
+    url: `/ai/drama/episodes/${episodeId}/jianying-draft/latest`,
+  });
+}
+
+export function getDramaJianyingReferenceVideo(packageId: number) {
+  return request.get<Blob>(
+    {
+      url: `/ai/drama/jianying/packages/${packageId}/reference`,
+      responseType: 'blob',
+      timeout: 300000,
+    },
+    { isTransformResponse: false },
+  );
+}
+
+export function downloadDramaJianyingPackage(packageId: number) {
+  return request.get<Blob>(
+    {
+      url: `/ai/drama/jianying/packages/${packageId}/download`,
+      responseType: 'blob',
+      timeout: 300000,
+    },
+    { isTransformResponse: false },
+  );
+}
+
+export function getSavedDramaSceneImagePrompt(sceneId: number) {
+  return request.post<DramaImagePromptPreview>({
+    url: `/ai/drama/scenes/${sceneId}/image/prompt`,
+    data: {},
+    timeout: 300000,
+  });
+}
+
+export function previewDramaSceneImage(
+  sceneId: number,
+  referenceAssetIds?: number[],
+  parameters?: DramaImageGenerateParameters,
+) {
+  return request.post<DramaImagePromptPreview>({
+    url: `/ai/drama/scenes/${sceneId}/image/preview`,
+    data: { referenceAssetIds, ...parameters },
+    timeout: 300000,
+  });
+}
+
+export function generateDramaSceneImage(
+  sceneId: number,
+  prompt?: string,
+  referenceAssetIds?: number[],
+  parameters?: DramaImageGenerateParameters,
+) {
   return request.post<DramaTask>({
     url: `/ai/drama/scenes/${sceneId}/image/generate`,
+    data: { prompt, referenceAssetIds, ...parameters },
+    timeout: 300000,
+  });
+}
+
+export function getSavedDramaShotImagePrompt(shotId: number) {
+  return request.post<DramaImagePromptPreview>({
+    url: `/ai/drama/shots/${shotId}/image/prompt`,
     data: {},
     timeout: 300000,
   });
 }
 
-export function generateDramaShotImage(shotId: number) {
+export function previewDramaShotImage(
+  shotId: number,
+  referenceAssetIds?: number[],
+  parameters?: DramaImageGenerateParameters,
+) {
+  return request.post<DramaImagePromptPreview>({
+    url: `/ai/drama/shots/${shotId}/image/preview`,
+    data: { referenceAssetIds, ...parameters },
+    timeout: 300000,
+  });
+}
+
+export function generateDramaShotImage(
+  shotId: number,
+  prompt?: string,
+  referenceAssetIds?: number[],
+  parameters?: DramaImageGenerateParameters,
+) {
   return request.post<DramaTask>({
     url: `/ai/drama/shots/${shotId}/image/generate`,
+    data: { prompt, referenceAssetIds, ...parameters },
+    timeout: 300000,
+  });
+}
+
+export function getSavedDramaShotVideoPrompt(shotId: number) {
+  return request.post<DramaVideoPromptPreview>({
+    url: `/ai/drama/shots/${shotId}/video/prompt`,
     data: {},
     timeout: 300000,
   });
 }
 
-export function generateDramaShotVideo(shotId: number) {
+export function saveDramaShotVideoPrompt(
+  shotId: number,
+  prompt: string,
+  referenceAssetIds?: number[],
+  parameters?: DramaVideoGenerateParameters,
+) {
+  return request.post<DramaVideoPromptPreview>({
+    url: `/ai/drama/shots/${shotId}/video/prompt/save`,
+    data: { prompt, referenceAssetIds, ...parameters },
+    timeout: 300000,
+  });
+}
+
+export function previewDramaShotVideo(
+  shotId: number,
+  referenceAssetIds?: number[],
+  parameters?: DramaVideoGenerateParameters,
+) {
+  return request.post<DramaVideoPromptPreview>({
+    url: `/ai/drama/shots/${shotId}/video/preview`,
+    data: { referenceAssetIds, ...parameters },
+    timeout: 300000,
+  });
+}
+
+export function generateDramaShotVideo(
+  shotId: number,
+  prompt?: string,
+  referenceAssetIds?: number[],
+  parameters?: DramaVideoGenerateParameters,
+) {
   return request.post<DramaTask>({
     url: `/ai/drama/shots/${shotId}/video/generate`,
-    data: {},
+    data: { prompt, referenceAssetIds, ...parameters },
     timeout: 300000,
   });
 }

@@ -11,12 +11,12 @@
     >
       <template #logo>
         <span v-if="showLogo" :class="`${prefix}-side-nav-logo-wrapper`" @click="goHome">
-          <component :is="getLogo()" :class="logoCls" />
+          <brand-logo :class="logoCls" :compact="collapsed" />
         </span>
       </template>
       <menu-content :nav-data="menu" />
       <template #operations>
-        <span :class="versionCls"> {{ !collapsed ? 'TDesign Starter' : '' }} {{ pgk.version }} </span>
+        <span :class="versionCls"> {{ !collapsed ? '镜燃 AI' : '' }} {{ pgk.version }} </span>
       </template>
     </t-menu>
     <div :class="`${prefix}-side-nav-placeholder${collapsed ? '-hidden' : ''}`"></div>
@@ -29,8 +29,7 @@ import type { PropType } from 'vue';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
-import AssetLogoFull from '@/assets/assets-logo-full.svg?component';
-import AssetLogo from '@/assets/assets-t-logo.svg?component';
+import BrandLogo from '@/components/brand-logo/index.vue';
 import { prefix } from '@/config/global';
 import { getActive } from '@/router';
 import { useSettingStore } from '@/store';
@@ -155,11 +154,6 @@ onMounted(() => {
 
 const goHome = () => {
   router.push('/dashboard/base');
-};
-
-const getLogo = () => {
-  if (collapsed.value) return AssetLogo;
-  return AssetLogoFull;
 };
 </script>
 <style lang="less" scoped></style>

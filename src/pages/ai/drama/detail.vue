@@ -79,6 +79,14 @@
                   <div class="character-tags">
                     <span v-for="tag in getCharacterTags(item.character.personality)" :key="tag">{{ tag }}</span>
                   </div>
+                  <div class="character-tags voice-tags">
+                    <span
+                      v-for="tag in getVoiceTags(item.character.voiceProfile, item.character.voiceProfileType)"
+                      :key="tag"
+                    >
+                      {{ tag }}
+                    </span>
+                  </div>
                   <div class="card-link">{{ item.position === 'center' ? '查看详情 →' : '点击选中' }}</div>
                 </article>
               </div>
@@ -213,6 +221,13 @@
         <t-form-item label="性格" name="personality">
           <t-input v-model="characterForm.personality" placeholder="隐忍、强势、疯批、温柔等" />
         </t-form-item>
+        <t-form-item label="音色特点" name="voiceProfile">
+          <t-textarea
+            v-model="characterForm.voiceProfile"
+            placeholder="标签：清冷、克制、低语感；描述：声线、语速、情绪质感和适合的对白场景"
+            :autosize="{ minRows: 2, maxRows: 4 }"
+          />
+        </t-form-item>
         <t-form-item label="人物关系" name="relationship">
           <t-textarea
             v-model="characterForm.relationship"
@@ -284,6 +299,8 @@ const characterForm = reactive<DramaCharacterCreateRequest>({
   appearance: '',
   costume: '',
   personality: '',
+  voiceProfileType: 'PROMPT',
+  voiceProfile: '',
   relationship: '',
 });
 
@@ -387,6 +404,8 @@ function resetCharacterForm() {
   characterForm.appearance = '';
   characterForm.costume = '';
   characterForm.personality = '';
+  characterForm.voiceProfileType = 'PROMPT';
+  characterForm.voiceProfile = '';
   characterForm.relationship = '';
 }
 
@@ -582,6 +601,24 @@ function getCharacterTags(personality?: string) {
   return tags.length ? tags : ['待完善'];
 }
 
+function getVoiceTags(voiceProfile?: string, voiceProfileType?: string) {
+  if (voiceProfileType === 'VOICE_ID') {
+    return voiceProfile ? ['音色ID'] : ['待定音色'];
+  }
+  if (voiceProfileType === 'AUDIO_ASSET_ID') {
+    return voiceProfile ? ['音频样例'] : ['待定音色'];
+  }
+  const text = voiceProfile || '';
+  const tagPart = text.match(/标签[:：]([^；;。]+)/)?.[1] || text;
+  const tags = tagPart
+    .replace(/[，。；、]/g, ',')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  return tags.length ? tags : ['待定音色'];
+}
+
 function getEpisodeStatusText(status?: string) {
   const statusMap: Record<string, string> = {
     OUTLINE_READY: '大纲完成',
@@ -747,13 +784,13 @@ onBeforeUnmount(() => {
 
 .character-carousel-shell {
   position: relative;
-  min-height: 330px;
+  min-height: 354px;
   padding: 8px 34px 26px;
 }
 
 .character-stack {
   position: relative;
-  height: 292px;
+  height: 316px;
   max-width: 860px;
   margin: 0 auto;
   perspective: 1200px;
@@ -764,7 +801,7 @@ onBeforeUnmount(() => {
   top: 18px;
   left: 50%;
   width: min(310px, 48%);
-  min-height: 248px;
+  min-height: 272px;
   padding: 20px;
   overflow: hidden;
   cursor: pointer;
@@ -934,10 +971,10 @@ onBeforeUnmount(() => {
 
 .character-brief {
   display: -webkit-box;
-  min-height: 78px;
+  min-height: 54px;
   overflow: hidden;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
 }
 
 .character-tags {
@@ -958,6 +995,16 @@ onBeforeUnmount(() => {
     background: #fff;
     border: 1px solid #edf1f8;
     border-radius: 999px;
+  }
+}
+
+.voice-tags {
+  margin-top: 8px;
+
+  span {
+    color: #7a4b00;
+    background: #fff8e6;
+    border-color: #ffe3a3;
   }
 }
 

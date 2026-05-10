@@ -1,6 +1,6 @@
 <template>
   <header class="login-header">
-    <logo-full-icon class="logo" />
+    <brand-logo class="logo" />
     <div class="operations-container">
       <t-button theme="default" shape="square" variant="text" @click="navToGitHub">
         <t-icon name="logo-github" class="icon" />
@@ -15,7 +15,7 @@
   </header>
 </template>
 <script setup lang="ts">
-import LogoFullIcon from '@/assets/assets-logo-full.svg?component';
+import BrandLogo from '@/components/brand-logo/index.vue';
 import { useSettingStore } from '@/store';
 
 const settingStore = useSettingStore();
